@@ -1,0 +1,100 @@
+# Python
+__pycache__/
+*.pyc
+
+# Env
+*.env
+backend/.env
+frontend/.env*
+# =========================
+# General / OS Files
+# =========================
+.DS_Store
+Thumbs.db
+*.log
+
+# =========================
+# Python
+# =========================
+# Byte-compiled / optimized / DLL files
+__pycache__/
+*.py[cod]
+*$py.class
+
+# Virtual Environments
+venv/
+env/
+.venv/
+.env/
+
+# Distribution / Packaging
+build/
+dist/
+eggs/
+.eggs/
+*.egg-info/
+*.egg
+var/
+
+# Unit Test / Coverage
+htmlcov/
+.tox/
+.nox/
+.coverage
+.coverage.*
+.cache
+nosetests.xml
+coverage.xml
+*.cover
+*.py,cover
+.hypothesis/
+.pytest_cache/
+
+# Jupyter Notebook
+.ipynb_checkpoints
+
+# Type Checking
+.mypy_cache/
+.dmypy.json
+dmypy.json
+
+# =========================
+# Node.js (Next.js dependencies)
+# =========================
+node_modules/
+npm-debug.log*
+yarn-debug.log*
+yarn-error.log*
+pnpm-debug.log*
+lerna-debug.log*
+
+# =========================
+# Next.js Specific
+# =========================
+# Next.js build output
+.next/
+
+# Next.js static export output
+out/
+
+# Production build artifacts (if applicable)
+dist/
+
+# =========================
+# Environment Variables
+# =========================
+# IMPORTANT: Never commit secrets or keys to git
+.env
+.env.local
+.env.development.local
+.env.test.local
+.env.production.local
+*.env
+
+# =========================
+# IDEs / Editors
+# =========================
+.vscode/
+.idea/
+*.swp
+*.swo
