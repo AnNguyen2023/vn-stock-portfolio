@@ -2,11 +2,13 @@ import crawler
 from fastapi import FastAPI, Depends, HTTPException
 from sqlalchemy.orm import Session
 from decimal import Decimal
-from datetime import datetime, timedelta, date # Đã thêm datetime ở đây
+from datetime import datetime, timedelta, date
 from fastapi.middleware.cors import CORSMiddleware
+# Import thêm cast và Date để fix lỗi tìm kiếm ngày
+from sqlalchemy import cast, Date 
 
 import models
-import schemas
+import schemas  # <--- QUAN TRỌNG: Dòng này đang bị thiếu
 
 app = FastAPI()
 
@@ -59,50 +61,66 @@ def deposit_money(req: schemas.DepositRequest, db: Session = Depends(get_db)):
 def buy_stock(req: schemas.BuyStockRequest, db: Session = Depends(get_db)):
     ticker = req.ticker.upper()
     
-     # CHUYỂN ĐỔI: Giá nhập 25.0 -> 25000 VND
-    actual_price_vnd = req.price * 1000
-        
-     # Tính phí dựa trên giá VND
-    fee = (req.volume * actual_price_vnd) * req.fee_rate
-    total_cost_vnd = (req.volume * actual_price_vnd) + fee
+    # --- SỬA LỖI: DỮ LIỆU GIÁ ĐÃ ĐƯỢC NHẬP ĐẦY ĐỦ (VND), KHÔNG NHÂN 1000 NỮA ---
+    # Chuyển đổi mọi thứ sang Decimal để tính toán chính xác
+    volume = Decimal(str(req.volume))
+    price_vnd = Decimal(str(req.price)) # GIÁ ĐÃ ĐẦY ĐỦ, KHÔNG NHÂN 1000
+    fee_rate = Decimal(str(req.fee_rate))
+
+    # Tính toán hoàn toàn bằng Decimal
+    total_value = volume * price_vnd
+    fee = total_value * fee_rate
+    total_cost = total_value + fee
     
     asset = db.query(models.AssetSummary).first()
-    if not asset or asset.cash_balance < total_cost_vnd:
-        raise HTTPException(status_code=400, detail="Không đủ tiền mặt")
+    # So sánh Decimal với Decimal
+    if not asset or asset.cash_balance < total_cost:
+        # Format số để dễ đọc trong thông báo lỗi
+        needed = f"{total_cost:,.0f}"
+        available = f"{asset.cash_balance:,.0f}" if asset else "0"
+        raise HTTPException(status_code=400, detail=f"Không đủ tiền mặt. Cần {needed}, có {available}")
     
     holding = db.query(models.TickerHolding).filter_by(ticker=ticker).first()
     if holding:
-        new_total_volume = holding.total_volume + req.volume
-        # Tính toán hoàn toàn bằng VND
-        new_avg_price = ((holding.average_price * holding.total_volume) + total_cost_vnd) / new_total_volume
+        # Tính giá trị hiện có bằng Decimal
+        current_volume = Decimal(str(holding.total_volume))
+        current_avg_price = Decimal(str(holding.average_price))
+        current_total_value = current_volume * current_avg_price
+        
+        # Tính giá trị mới
+        new_total_volume = current_volume + volume
+        new_total_value = current_total_value + total_cost
+        
+        # Cập nhật holding
+        holding.average_price = new_total_value / new_total_volume
         holding.total_volume = new_total_volume
-        holding.average_price = new_avg_price
     else:
+        # Tạo mới holding
         holding = models.TickerHolding(
             ticker=ticker,
-            total_volume=req.volume,
-            average_price=(total_cost_vnd / req.volume)
+            total_volume=volume,
+            average_price=(total_cost / volume)
         )
         db.add(holding)
     
-    # Trừ tiền mặt (Đơn vị VND)
-    asset.cash_balance -= total_cost_vnd
+    # Trừ tiền mặt
+    asset.cash_balance -= total_cost
     
-    # Lưu lịch sử giao dịch (Đơn vị VND)
+    # Lưu lịch sử giao dịch
     transaction = models.StockTransaction(
         ticker=ticker,
         type=models.TransactionType.BUY,
-        volume=req.volume,
-        price=actual_price_vnd,
+        volume=volume,
+        price=price_vnd,
         fee=fee,
-        total_value=total_cost_vnd, # Đã sửa lỗi NameError
+        total_value=total_cost,
         transaction_date=req.transaction_date,
         settlement_date=(req.transaction_date + timedelta(days=0)).date()
     )
     db.add(transaction)
     
     db.commit()
-    return {"message": f"Đã khớp lệnh mua {req.volume} {ticker}"}
+    return {"message": f"Đã khớp lệnh mua {int(volume)} {ticker}"}
 
 @app.get("/portfolio")
 def get_portfolio(db: Session = Depends(get_db)):
@@ -178,8 +196,6 @@ def get_portfolio(db: Session = Depends(get_db)):
     
     realtime_prices = crawler.get_current_prices(tickers)
     
-    # ... (các đoạn code trước đó giữ nguyên) ...
-
     portfolio_data = []
     total_stock_value = Decimal("0")
 
@@ -223,31 +239,36 @@ def sell_stock(req: schemas.SellStockRequest, db: Session = Depends(get_db)):
     ticker = req.ticker.upper()
     holding = db.query(models.TickerHolding).filter_by(ticker=ticker).first()
     
-    # 1. Kiểm tra điều kiện bán
-    if not holding or holding.available_volume < req.volume:
-        raise HTTPException(status_code=400, detail=f"Không đủ cổ phiếu khả dụng để bán (Có: {holding.available_volume if holding else 0})")
+    # 1. Kiểm tra điều kiện bán (Dựa trên total_volume vì đã áp dụng T+0 cổ phiếu)
+    if not holding or holding.total_volume < req.volume:
+        raise HTTPException(status_code=400, detail=f"Không đủ cổ phiếu để bán (Có: {holding.total_volume if holding else 0})")
 
-    # 2. Tính toán tài chính (Quy đổi sang VND)
-    actual_price_vnd = Decimal(str(req.price)) * 1000
+    # 2. Tính toán tài chính
+    # Lưu ý: req.price là giá nhập vào (VD: 26.5), cần nhân 1000 nếu DB lưu giá full
+    # Nhưng theo logic Buy trước đó, ta đang lưu giá full VND. 
+    # Hãy đảm bảo req.price từ frontend gửi xuống là giá thực (VD: 26500) hoặc xử lý đồng nhất.
+    # Dựa trên code cũ của bạn: actual_price_vnd = Decimal(str(req.price)) * 1000
+    
+    actual_price_vnd = Decimal(str(req.price)) * 1000 
     gross_revenue = req.volume * actual_price_vnd
     fee = gross_revenue * Decimal(str(req.fee_rate))
     tax = gross_revenue * Decimal(str(req.tax_rate))
     net_proceeds = gross_revenue - fee - tax # Tiền thực tế thu về túi
 
-    # 3. Tính Lãi/Lỗ ròng cho thương vụ này
-    cost_basis = req.volume * holding.average_price # Giá vốn của số lượng bán
+    # 3. Tính Lãi/Lỗ ròng (Realized Profit) ngay lập tức
+    cost_basis = req.volume * holding.average_price # Giá vốn của phần bán đi
     profit = net_proceeds - cost_basis
 
     # 4. Cập nhật Database
-    # Giảm số lượng trong danh mục
+    # Trừ cổ phiếu
     holding.total_volume -= req.volume
-    holding.available_volume -= req.volume
+    holding.available_volume = holding.total_volume # Đồng bộ T+0 (bán xong phần còn lại vẫn bán được tiếp)
     
-    # Cộng tiền vào tài khoản
+    # Cộng tiền NGAY LẬP TỨC (T+0 Money)
     asset = db.query(models.AssetSummary).first()
     asset.cash_balance += net_proceeds
 
-    # Lưu lịch sử giao dịch
+    # Lưu lịch sử giao dịch (Đánh dấu settlement_date = Hôm nay)
     transaction = models.StockTransaction(
         ticker=ticker,
         type=models.TransactionType.SELL,
@@ -256,26 +277,32 @@ def sell_stock(req: schemas.SellStockRequest, db: Session = Depends(get_db)):
         fee=fee,
         tax=tax,
         total_value=net_proceeds,
-        transaction_date=req.transaction_date
+        transaction_date=req.transaction_date,
+        settlement_date=datetime.now().date() # <--- QUAN TRỌNG: Tiền về ngay hôm nay
     )
     db.add(transaction)
 
-    # Lưu vào bảng Lãi lỗ đã thực hiện (Realized Profit)
+    # Lưu ngay vào bảng Lãi lỗ (để hiện bên tab Hiệu suất)
     realized = models.RealizedProfit(
         ticker=ticker,
         volume=req.volume,
         buy_avg_price=holding.average_price,
         sell_price=actual_price_vnd,
-        net_profit=profit
+        net_profit=profit,
+        sell_date=datetime.now() # Lưu ngày giờ bán thực tế
     )
     db.add(realized)
 
-    # Nếu bán hết sạch thì reset giá vốn về 0
+    # Xử lý giá vốn nếu bán hết
     if holding.total_volume == 0:
         holding.average_price = 0
 
     db.commit()
-    return {"message": f"Bán thành công {req.volume} {ticker}", "profit": profit}
+    
+    return {
+        "message": f"Đã bán {req.volume} {ticker}. Tiền về: {net_proceeds:,.0f} đ. Lãi/Lỗ: {profit:,.0f} đ", 
+        "profit": profit
+    }
 
 @app.get("/history")
 def get_history(db: Session = Depends(get_db)):
@@ -341,10 +368,11 @@ def get_history_summary(start_date: str, end_date: str, db: Session = Depends(ge
     start = datetime.strptime(start_date, "%Y-%m-%d").date()
     end = datetime.strptime(end_date, "%Y-%m-%d").date()
     
-    # Lấy các khoản lãi lỗ đã chốt trong khoảng thời gian này
+    # --- SỬA LỖI TIMEZONE/GIỜ PHÚT ---
+    # Dùng hàm cast để ép cột sell_date (DateTime) về dạng Date trước khi so sánh
     items = db.query(models.RealizedProfit).filter(
-        models.RealizedProfit.sell_date >= start,
-        models.RealizedProfit.sell_date <= end
+        cast(models.RealizedProfit.sell_date, Date) >= start,
+        cast(models.RealizedProfit.sell_date, Date) <= end
     ).all()
     
     total_profit = sum(item.net_profit for item in items)
