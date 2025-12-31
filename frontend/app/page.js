@@ -1,0 +1,1015 @@
+"use client";
+import { useEffect, useState } from 'react';
+import { 
+  getPortfolio, depositMoney, withdrawMoney, 
+  buyStock, sellStock, getAuditLog, 
+  getHistorySummary, getPerformance, getHistoricalData 
+} from '@/lib/api';
+
+
+import { 
+  Wallet, TrendingUp, RefreshCw, PlusCircle, 
+  MinusCircle, Book, History, Eye, 
+  EyeOff, Calendar, Activity, List,
+  PieChart as PieChartIcon // <--- SỬA: Đổi tên để tránh trùng với biểu đồ
+} from 'lucide-react';
+
+import { 
+  LineChart, Line, XAxis, YAxis, CartesianGrid, Tooltip, Legend, ResponsiveContainer, 
+  PieChart, Pie, Cell // <--- Đã thêm 3 thành phần này
+} from 'recharts';
+
+// Bảng màu cho Biểu đồ tròn (Cơ cấu danh mục)
+const PIE_COLORS = [
+  '#16a34a', // Xanh lá (Lớn nhất)
+  '#2563eb', // Xanh dương
+  '#1e40af', // Xanh đậm
+  '#ea580c', // Cam đậm
+  '#ca8a04', // Vàng nghệ
+  '#9333ea', // Tím
+  '#64748b', // Xám
+  '#be123c', // Đỏ đô
+];
+
+export default function Dashboard() {
+  const [data, setData] = useState(null);
+  const [logs, setLogs] = useState([]);
+  const [perf, setPerf] = useState(null);
+  const [loading, setLoading] = useState(true);
+  
+  // Privacy States (Mặc định che số)
+  const [isPrivate, setIsPrivate] = useState(true);
+
+  // History Tab State
+  const [activeHistoryTab, setActiveHistoryTab] = useState('allocation'); // 'performance' | 'orders' | 'cashflow'
+  
+  // Date Filters
+  const [startDate, setStartDate] = useState('');
+  const [endDate, setEndDate] = useState('');
+  const [historicalProfit, setHistoricalProfit] = useState(null);
+
+  // Modals Visibility
+  const [showDeposit, setShowDeposit] = useState(false);
+  const [showWithdraw, setShowWithdraw] = useState(false);
+  const [showBuy, setShowBuy] = useState(false);
+  const [showSell, setShowSell] = useState(false);
+
+  // --- STATE CHO BIỂU ĐỒ SO SÁNH ---
+  // Mặc định chọn Portfolio và VNINDEX
+  const [selectedComparisons, setSelectedComparisons] = useState(['PORTFOLIO', 'VNINDEX']); 
+  const [chartData, setChartData] = useState([]);
+  const [isDropdownOpen, setIsDropdownOpen] = useState(false);
+  
+  // Mặc định xem 1 tháng ('1m')
+  const [chartRange, setChartRange] = useState('1m'); 
+
+  // Forms State
+  const [amount, setAmount] = useState('');
+  const [description, setDescription] = useState('');
+  const [buyForm, setBuyForm] = useState({ ticker: '', volume: '', price: '', fee_rate: 0.0015 });
+  const [sellForm, setSellForm] = useState({ ticker: '', volume: '', price: '', available: 0 });
+
+  // --- 1. LOGIC PRIVACY: Tự động che lại sau 5 phút ---
+  useEffect(() => {
+    let timer;
+    if (!isPrivate) {
+      timer = setTimeout(() => { setIsPrivate(true); }, 300000); 
+    }
+    return () => clearTimeout(timer);
+  }, [isPrivate]);
+
+  // --- 2. LOGIC BIỂU ĐỒ (Đã cập nhật xử lý Portfolio/VNINDEX/Stock) ---
+  
+  const normalizeData = (responses, tickers) => {
+    if (!responses || responses.length === 0) return [];
+    const baseData = responses[0]?.data || [];
+    if (baseData.length === 0) return [];
+
+    const priceMaps = {};
+    const firstPrices = {};
+
+    tickers.forEach((ticker, index) => {
+      const data = responses[index]?.data || [];
+      if (data.length > 0) {
+        priceMaps[ticker] = {};
+        data.forEach(item => { priceMaps[ticker][item.date] = item.close; });
+        firstPrices[ticker] = data[0].close;
+      }
+    });
+
+    return baseData.map((item) => {
+      const dateStr = item.date;
+      const point = { date: dateStr.slice(5) };
+
+      // Xử lý PORTFOLIO (Luôn có key này)
+      point['PORTFOLIO'] = 0; 
+
+      // Xử lý các mã khác
+      tickers.forEach(ticker => {
+        const currentPrice = priceMaps[ticker]?.[dateStr];
+        const startPrice = firstPrices[ticker];
+        if (currentPrice && startPrice) {
+          point[ticker] = ((currentPrice - startPrice) / startPrice) * 100;
+        } else {
+          point[ticker] = 0;
+        }
+      });
+      return point;
+    });
+  };
+
+  useEffect(() => {
+    const fetchChart = async () => {
+      // Lọc ra các mã cổ phiếu THỰC TẾ (trừ Portfolio) để gọi API
+      const apiTargets = selectedComparisons.filter(t => t !== 'PORTFOLIO');
+      
+      // Nếu không còn mã nào (chỉ chọn Portfolio), mượn tạm VNINDEX để lấy khung thời gian
+      const effectiveTargets = apiTargets.length > 0 ? apiTargets : ['VNINDEX'];
+
+      const requests = effectiveTargets.map(ticker => getHistoricalData(ticker, chartRange));
+      const responses = await Promise.all(requests);
+
+      const finalData = normalizeData(responses, effectiveTargets);
+      setChartData(finalData);
+    };
+    fetchChart();
+  }, [selectedComparisons, chartRange]);
+
+  const toggleComparison = (ticker) => {
+    if (selectedComparisons.includes(ticker)) {
+      setSelectedComparisons(selectedComparisons.filter(t => t !== ticker));
+    } else {
+      if (selectedComparisons.length >= 5) {
+        alert("Bạn chỉ được so sánh tối đa 5 đường cùng lúc.");
+        return;
+      }
+      setSelectedComparisons([...selectedComparisons, ticker]);
+    }
+  };
+
+  // --- 3. DATA REALTIME ---
+  const fetchAllData = async () => {
+    try {
+      const resP = await getPortfolio().catch(() => ({data: null}));
+      const resL = await getAuditLog().catch(() => ({data: []}));
+      const resEf = await getPerformance().catch(() => ({data: null}));
+      
+      if(resP.data) setData(resP.data);
+      if(resL.data) setLogs(resL.data);
+      if(resEf.data) setPerf(resEf.data);
+    } catch (error) { console.error("Lỗi:", error); }
+    setLoading(false);
+  };
+
+  useEffect(() => {
+    fetchAllData();
+    const interval = setInterval(fetchAllData, 30000);
+    return () => clearInterval(interval);
+  }, []);
+
+  // --- 4. FORM HANDLERS (Đã fix lỗi handleVolumeChange) ---
+
+  // Tự động điền ghi chú nạp/rút
+  useEffect(() => {
+    const today = new Date().toLocaleDateString('vi-VN'); 
+    if (showDeposit) setDescription(`Nạp tiền tk ${today}`);
+    else if (showWithdraw) setDescription(`Rút tiền tk ${today}`);
+    else { setDescription(''); setAmount(''); }
+  }, [showDeposit, showWithdraw]);
+
+  const handleAmountChange = (e) => {
+    const rawValue = e.target.value.replace(/[^0-9]/g, '');
+    if (!rawValue) { setAmount(''); return; }
+    setAmount(new Intl.NumberFormat('en-US').format(rawValue));
+  };
+
+  const handleDeposit = async (e) => {
+    e.preventDefault();
+    if (!amount) return;
+    await depositMoney({ amount: parseFloat(amount.replace(/,/g, '')), description });
+    closeModals(); fetchAllData();
+  };
+
+  const handleWithdraw = async (e) => {
+    e.preventDefault();
+    if (!amount) return;
+    try {
+        const cleanAmount = parseFloat(amount.replace(/,/g, ''));
+        await withdrawMoney({ amount: cleanAmount, description });
+        closeModals(); 
+        fetchAllData();
+        alert("Rút tiền thành công!");
+    } catch (error) {
+        // Hiện thông báo lỗi cụ thể từ Backend (Ví dụ: "Không đủ số dư")
+        alert(error.response?.data?.detail || "Lỗi khi rút tiền");
+    }
+};
+
+  // --- LOGIC MUA/BÁN ---
+  const handlePriceChange = (e, type) => {
+    const val = e.target.value;
+    if (/^[\d,.]*$/.test(val)) {
+        if (type === 'buy') setBuyForm({ ...buyForm, price: val });
+        else setSellForm({ ...sellForm, price: val });
+    }
+  };
+
+  const handlePriceBlur = (type) => {
+    const form = type === 'buy' ? buyForm : sellForm;
+    let valStr = form.price.toString().replace(/,/g, ''); 
+    let val = parseFloat(valStr);
+    if (!val) return;
+    if (val < 1000) val = val * 1000;
+    const formatted = new Intl.NumberFormat('en-US').format(val);
+    if (type === 'buy') setBuyForm({ ...buyForm, price: formatted });
+    else setSellForm({ ...sellForm, price: formatted });
+  };
+
+  // FIX LỖI: Đây là hàm mà bạn bị thiếu trước đó
+  const handleVolumeChange = (e, type) => {
+    const raw = e.target.value.replace(/[^0-9]/g, '');
+    if (!raw) {
+        if (type === 'buy') setBuyForm({ ...buyForm, volume: '' });
+        else setSellForm({ ...sellForm, volume: '' });
+        return;
+    }
+    const formatted = new Intl.NumberFormat('en-US').format(raw);
+    if (type === 'buy') setBuyForm({ ...buyForm, volume: formatted });
+    else setSellForm({ ...sellForm, volume: formatted });
+  };
+
+  const handleBuy = async (e) => {
+    e.preventDefault();
+    try {
+      const cleanPrice = parseFloat(buyForm.price.toString().replace(/,/g, ''));
+      const cleanVolume = parseInt(buyForm.volume.toString().replace(/,/g, ''));
+      await buyStock({ ...buyForm, volume: cleanVolume, price: cleanPrice });
+      closeModals(); fetchAllData(); alert("Mua thành công!");
+    } catch (error) { alert(error.response?.data?.detail || "Lỗi mua"); }
+  };
+
+  const handleSell = async (e) => {
+    e.preventDefault();
+    try {
+      const cleanPrice = parseFloat(sellForm.price.toString().replace(/,/g, ''));
+      const cleanVolume = parseInt(sellForm.volume.toString().replace(/,/g, ''));
+      await sellStock({ ...sellForm, volume: cleanVolume, price: cleanPrice });
+      closeModals(); fetchAllData(); alert("Bán thành công!");
+    } catch (error) { alert(error.response?.data?.detail || "Lỗi bán"); }
+  };
+
+  const handleCalculateProfit = async () => {
+    if (!startDate || !endDate) return alert("Vui lòng chọn đủ ngày");
+    const res = await getHistorySummary(startDate, endDate);
+    setHistoricalProfit(res.data);
+  };
+
+  const closeModals = () => {
+    setShowDeposit(false); setShowWithdraw(false); setShowBuy(false); setShowSell(false);
+    setAmount(''); setDescription('');
+    setBuyForm({ ticker: '', volume: '', price: '', fee_rate: 0.0015 });
+  };
+
+  if (loading && !data) return <div className="p-10 text-center font-sans text-emerald-600 font-medium">ĐANG TẢI DỮ LIỆU...</div>;
+
+  // Tạo list dropdown
+  const holdingTickers = data?.holdings?.map(h => h.ticker) || [];
+  const availableTickers = ['PORTFOLIO', 'VNINDEX', ...new Set(holdingTickers)];
+
+  //---------------------------------------------------------------------------------------------------------------------//
+return (
+    <main className="min-h-screen bg-[#f8fafc] p-4 md:p-8 font-sans">
+      <div className="max-w-7xl mx-auto">
+        
+        {/* Header */}
+        <div className="flex flex-col md:flex-row justify-between items-center gap-6 mb-10">
+          {/* Phần 1: Tiêu đề + Nút Mắt (Privacy) */}
+          <div className="flex items-center gap-4">
+            <h1 className="text-3xl font-black text-emerald-900 italic">INVEST JOURNAL</h1>
+            <button 
+              onClick={() => setIsPrivate(!isPrivate)} 
+              className="p-2 rounded-full hover:bg-slate-200 text-slate-400 hover:text-slate-600 transition"
+              title={isPrivate ? "Hiện số dư" : "Ẩn số dư"}
+            >
+              {isPrivate ? <EyeOff size={22} /> : <Eye size={22} />}
+            </button>
+          </div>
+
+          {/* Phần 2: Các nút thao tác (Đã sửa Nạp vốn -> Nạp tiền) */}
+          <div className="flex flex-wrap gap-3">
+            <button onClick={() => setShowDeposit(true)} className="bg-emerald-500 text-white px-5 py-2.5 rounded-lg font-medium flex items-center gap-2 hover:bg-emerald-600 shadow-md active:scale-95 transition">
+              <PlusCircle size={18}/> Nạp tiền
+            </button>
+            <button onClick={() => setShowWithdraw(true)} className="bg-purple-600 text-white px-5 py-2.5 rounded-lg font-medium flex items-center gap-2 hover:bg-purple-700 shadow-md shadow-purple-100 active:scale-95 transition">
+              <MinusCircle size={18}/> Rút tiền
+            </button>
+            <button onClick={() => setShowBuy(true)} className="bg-rose-400 text-white px-5 py-2.5 rounded-lg font-medium flex items-center gap-2 hover:bg-rose-500 shadow-md active:scale-95 transition">
+              <PlusCircle size={18}/> Mua mới
+            </button>
+            <button onClick={fetchAllData} className="p-2.5 bg-white border border-emerald-100 rounded-lg text-emerald-500 hover:text-emerald-700 transition shadow-sm">
+              <RefreshCw size={20}/>
+            </button>
+          </div>
+        </div>
+
+        {/* Summary Cards */}
+        <div className="grid grid-cols-1 md:grid-cols-3 gap-6 mb-8">
+          <SummaryCard 
+            isPrivate={isPrivate}
+            title="Vốn thực có (NAV)" 
+            value={Math.floor(data?.total_nav || 0)}
+            icon={<PieChart size={22}/>} 
+            color="text-purple-600" bg="bg-purple-50" 
+          />
+          <SummaryCard 
+            isPrivate={isPrivate}
+            title="Tiền mặt" 
+            value={Math.floor(data?.cash_balance || 0)} 
+            icon={<Wallet size={22}/>} 
+            color="text-emerald-600" bg="bg-emerald-50" 
+          />
+          <SummaryCard 
+            isPrivate={isPrivate}
+            title="Giá trị cổ phiếu" 
+            value={Math.floor(data?.total_stock_value || 0)} 
+            icon={<TrendingUp size={22}/>} 
+            color="text-fuchsia-600" bg="bg-fuchsia-50" 
+          />
+        </div>
+
+        {/* Bảng Hiệu suất Realtime */}
+        <div className="mb-10 bg-white rounded-xl overflow-hidden shadow-xl border border-emerald-100">
+         <div className="p-4 bg-emerald-100 border-b border-emerald-100 flex justify-between items-center text-center">
+          <h2 className="w-full text-emerald-900 text-lg font-medium tracking-tight flex items-center justify-center gap-2 uppercase">
+            Hiệu suất đầu tư theo mốc thời gian 
+            <span className="text-emerald-400 text-sm italic lowercase font-normal">ⓘ</span>
+          </h2>
+        </div>
+          <div className="grid grid-cols-2 md:grid-cols-4 divide-x divide-emerald-50">
+            <PerfBox isPrivate={isPrivate} label="1 ngày" data={perf?.["1d"]} />
+            <PerfBox isPrivate={isPrivate} label="1 tháng" data={perf?.["1m"]} />
+            <PerfBox isPrivate={isPrivate} label="1 năm" data={perf?.["1y"]} />
+            <PerfBox isPrivate={isPrivate} label="YTD" data={perf?.["ytd"]} />
+          </div>
+        </div>
+
+        <div className="space-y-10">
+        
+        {/* --- KHỐI BIỂU ĐỒ SO SÁNH (Max 5 items) --- */}
+        <div className="mb-10 bg-white rounded-xl shadow-xl border border-emerald-100 overflow-visible relative z-10">
+          <div className="p-4 bg-emerald-100 border-b border-emerald-100 flex flex-col md:flex-row justify-between md:items-center gap-4">
+             
+             {/* 1. Tiêu đề */}
+             <h2 className="text-emerald-900 text-lg font-medium tracking-tight flex items-center gap-2 uppercase">
+                <TrendingUp size={20} className="text-emerald-600"/> Tăng trưởng (%)
+             </h2>
+
+             {/* 2. Chọn Chu Kỳ */}
+             <div className="flex bg-white border border-emerald-100 p-1 rounded-lg shadow-sm">
+                {['1m', '3m', '6m', '1y'].map((range) => (
+                  <button key={range} onClick={() => setChartRange(range)} className={`px-3 py-1.5 text-[11px] font-bold rounded-md transition uppercase ${chartRange === range ? 'bg-emerald-500 text-white shadow-sm' : 'text-slate-400 hover:text-emerald-600 hover:bg-emerald-50'}`}>{range}</button>
+                ))}
+             </div>
+             
+             {/* 3. Dropdown Chọn Mã (Dynamic) */}
+             <div className="relative">
+                <button 
+                  onClick={() => setIsDropdownOpen(!isDropdownOpen)}
+                  className="bg-white border border-emerald-200 text-xs rounded-md px-4 py-2 flex items-center gap-2 font-bold text-emerald-700 shadow-sm hover:bg-emerald-50 transition"
+                >
+                   <PlusCircle size={14} /> 
+                   So sánh ({selectedComparisons.length}/5)
+                </button>
+
+                {isDropdownOpen && (
+                  <div className="absolute right-0 top-full mt-2 w-56 bg-white rounded-xl shadow-xl border border-slate-100 p-3 z-50 animate-in fade-in zoom-in duration-200">
+                    <p className="text-xs uppercase font-bold text-emerald-800 tracking-widest border-b border-emerald-100 pb-1">Đã chọn {selectedComparisons.length}/5</p>
+                    <div className="space-y-2 max-h-60 overflow-y-auto custom-scrollbar">
+                      
+                      {/* Render danh sách: PORTFOLIO -> VNINDEX -> STOCKS */}
+                      {availableTickers.map(t => {
+                        let label = t;
+                        if(t === 'PORTFOLIO') label = 'Danh mục của tôi';
+                        if(t === 'VNINDEX') label = 'VN-INDEX';
+                        
+                        // Kiểm tra disable: Nếu chưa chọn VÀ đã đủ 5 thì disable
+                        const isSelected = selectedComparisons.includes(t);
+                        const isDisabled = !isSelected && selectedComparisons.length >= 5;
+
+                        return (
+                          <label key={t} className={`flex items-center gap-2 p-1.5 rounded-md transition ${isDisabled ? 'opacity-50 cursor-not-allowed' : 'cursor-pointer hover:bg-slate-50'}`}>
+                            <input 
+                              type="checkbox" 
+                              checked={isSelected}
+                              disabled={isDisabled}
+                              onChange={() => toggleComparison(t)}
+                              className="accent-emerald-600 rounded w-4 h-4"
+                            />
+                            <span className={`text-sm font-medium ${t==='PORTFOLIO' ? 'text-blue-600 font-bold' : 'text-slate-700'}`}>{label}</span>
+                          </label>
+                        )
+                      })}
+                    </div>
+                    <div className="pt-2 mt-2 border-t border-slate-100 text-right">
+                       <button onClick={() => setIsDropdownOpen(false)} className="text-xs font-bold text-emerald-600 hover:text-emerald-800">Đóng</button>
+                    </div>
+                  </div>
+                )}
+                {isDropdownOpen && <div className="fixed inset-0 z-40" onClick={() => setIsDropdownOpen(false)}></div>}
+             </div>
+          </div>
+
+          <div className="p-6 h-[350px] w-full">
+            <ResponsiveContainer width="100%" height="100%">
+              <LineChart data={chartData} margin={{ top: 10, right: 10, left: -20, bottom: 0 }}>
+                <CartesianGrid strokeDasharray="3 3" stroke="#cbd5e1" fill="#ffffff" />
+                <XAxis dataKey="date" axisLine={false} tickLine={false} tick={{fill: '#111827', fontSize: 11, fontWeight: 500}} dy={10} />
+                <YAxis axisLine={false} tickLine={false} tick={{fill: '#111827', fontSize: 11, fontWeight: 500}} tickFormatter={(val) => `${val > 0 ? '+' : ''}${val.toFixed(1)}%`} />
+                <Tooltip contentStyle={{borderRadius: '12px', border: 'none', boxShadow: '0 10px 15px -3px rgba(0, 0, 0, 0.1)'}} formatter={(value) => [`${value.toFixed(2)}%`]} itemSorter={(item) => -item.value} />
+                <Legend wrapperStyle={{paddingTop: '20px', fontSize: '12px', fontWeight: 600, color: '#111827'}} iconType="square" />
+
+                {/* LOGIC VẼ ĐƯỜNG DỰA TRÊN DANH SÁCH ĐÃ CHỌN */}
+                {selectedComparisons.map((ticker) => {
+                  
+                  // A. TRƯỜNG HỢP 1: DANH MỤC CỦA TÔI (PORTFOLIO)
+                  if (ticker === 'PORTFOLIO') {
+                    return (
+                      <Line key="PORTFOLIO" type="monotone" dataKey="PORTFOLIO" name="Danh mục của tôi" 
+                        stroke="#2563eb" strokeWidth={4} dot={{r: 4, fill: '#2563eb', strokeWidth: 0}} activeDot={{r: 7}}
+                      />
+                    );
+                  }
+
+                  // B. TRƯỜNG HỢP 2: VN-INDEX
+                  if (ticker === 'VNINDEX') {
+                    return (
+                      <Line key="VNINDEX" type="monotone" dataKey="VNINDEX" name="VN-Index" 
+                        stroke="#64748b" strokeWidth={3} dot={false} strokeDasharray="8 8" strokeOpacity={0.8}
+                      />
+                    );
+                  }
+
+                  // C. TRƯỜNG HỢP 3: CỔ PHIẾU THƯỜNG (Dùng 5 màu cố định)
+                  // Lọc danh sách chỉ lấy Stocks để đếm số thứ tự màu (bỏ qua Portfolio và Vnindex)
+                  const stockOnlyList = selectedComparisons.filter(t => t !== 'PORTFOLIO' && t !== 'VNINDEX');
+                  const stockIndex = stockOnlyList.indexOf(ticker);
+                  const color = COLORS[stockIndex % COLORS.length];
+
+                  return (
+                    <Line key={ticker} type="monotone" dataKey={ticker} name={ticker} 
+                      stroke={color} strokeWidth={3} dot={{r: 3, strokeWidth: 0, fill: color}} activeDot={{r: 6, strokeWidth: 0}}
+                    />
+                  );
+                })}
+              
+              </LineChart>
+            </ResponsiveContainer>
+          </div>
+        </div>
+          
+          {/* 1. Danh mục hiện tại (Đã Fix lỗi Hydration và update Font Đen Đậm) */}
+          <div className="bg-white rounded-xl shadow-xl border border-emerald-100 overflow-hidden">
+            <div className="p-4 bg-emerald-100 border-b border-emerald-100 flex justify-between items-center">
+              <h2 className="text-emerald-900 text-lg font-medium tracking-tight flex items-center gap-2 uppercase">
+                <TrendingUp size={20} className="text-emerald-600"/> Danh mục hiện tại
+              </h2>
+            </div>
+            
+            <div className="overflow-x-auto">
+              <table className="w-full text-left border-collapse">
+                {/* HEAD: Đã chỉnh màu Xanh thanh mảnh, Rõ ràng & Chữ to hơn (text-xs) */}
+                <thead className="bg-emerald-50/40 text-emerald-700 text-xs uppercase font-medium tracking-wider whitespace-nowrap border-b border-emerald-200">
+                    <tr>
+                        <th className="p-4 font-bold">Mã CK</th> 
+                        <th className="p-4 text-right">Khối lượng</th>
+                        <th className="p-4 text-right">Giá vốn</th>
+                        <th className="p-4 text-right">Giá TT</th>
+                        <th className="p-4 text-right">Tổng Vốn</th>
+                        <th className="p-4 text-right">Giá trị TT</th>
+                        <th className="p-4 text-right">Lãi / Lỗ</th>
+                        <th className="p-4 text-right">% Lãi/Lỗ</th>
+                        <th className="p-4 text-right">Thao tác</th>
+                    </tr>
+                </thead>
+                {/* BODY: Đã chỉnh Hover đậm & Đường kẻ xanh */}
+                {/* 1. divide-emerald-200: Tạo đường kẻ ngang màu xanh ngọc mảnh giữa các hàng */}
+                <tbody className="divide-y divide-emerald-200">
+                  {data?.holdings.map((s) => {
+                    const totalCost = s.current_value - s.profit_loss;
+                    const numClass = "p-4 text-right font-medium text-slate-700 text-sm";
+                    
+                    return (
+                      // 2. hover:bg-emerald-100: Khi rê chuột vào nền sẽ xanh đậm hơn rõ rệt
+                      <tr key={s.ticker} className="hover:bg-emerald-100 transition duration-150">
+                          <td className="p-4 font-bold text-slate-700 text-sm">{s.ticker}</td>
+                          <td className={numClass}>{s.volume.toLocaleString()}</td>
+                          <td className={numClass}>{s.avg_price.toLocaleString()}</td>
+                          <td className={numClass}>{s.current_price.toLocaleString()}</td>
+                          <td className={numClass}>{Math.floor(totalCost).toLocaleString()}</td>
+                          <td className={numClass}>{Math.floor(s.current_value).toLocaleString()}</td>
+
+                          <td className={`p-4 text-right font-medium text-sm ${s.profit_loss >= 0 ? 'text-emerald-600' : 'text-rose-500'}`}>
+                            {s.profit_loss >= 0 ? '+' : ''}{Math.floor(s.profit_loss).toLocaleString()}
+                          </td>
+                          <td className={`p-4 text-right font-medium text-sm ${s.profit_percent >= 0 ? 'text-emerald-600' : 'text-rose-500'}`}>
+                            {s.profit_percent > 0 ? '+' : ''}{s.profit_percent.toFixed(2)}%
+                          </td>
+
+                          <td className="p-4 text-right flex justify-end gap-2">
+                              <button onClick={() => {setBuyForm({...buyForm, ticker: s.ticker}); setShowBuy(true)}} className="p-1.5 bg-emerald-50 text-emerald-600 rounded-md hover:bg-emerald-600 hover:text-white transition"><PlusCircle size={16}/></button>
+                              <button onClick={() => {setSellForm({ticker: s.ticker, volume: s.volume, price: '', available: s.volume}); setShowSell(true)}} className="p-1.5 bg-rose-50 text-rose-500 rounded-md hover:bg-rose-500 hover:text-white transition"><MinusCircle size={16}/></button>
+                          </td>
+                      </tr>
+                    );
+                  })}
+                </tbody>
+              </table>
+            </div>
+          </div>
+
+          
+          {/* --- NHẬT KÝ DỮ LIỆU (Đã đưa Cơ cấu danh mục lên đầu) --- */}
+        <div className="bg-white rounded-xl shadow-xl border border-emerald-100 overflow-hidden relative z-10 mb-10">
+              {/* HEADER NHẬT KÝ: Đã chỉnh nút & ngày tháng TO HƠN, RÕ HƠN */}
+              <div className="p-4 bg-emerald-100 border-b border-emerald-100 flex flex-col md:flex-row justify-between md:items-center gap-4">
+                  <h2 className="text-emerald-900 text-lg font-medium tracking-tight flex items-center gap-2 uppercase">
+                    <Book size={20} className="text-emerald-600"/> Nhật Ký Dữ Liệu
+                  </h2>
+                  
+                  <div className="flex flex-wrap gap-3 items-center">
+                      {/* Ô Ngày bắt đầu: To hơn (py-2.5), Chữ đậm (font-bold text-sm) */}
+                      <div className="relative">
+                        <Calendar className="absolute left-3 top-1/2 -translate-y-1/2 text-emerald-600" size={18} />
+                        <input 
+                            type="date" 
+                            value={startDate} 
+                            onChange={(e) => setStartDate(e.target.value)} 
+                            className="pl-10 pr-4 py-2.5 bg-white border border-emerald-200 rounded-xl text-sm font-bold focus:ring-2 focus:ring-emerald-500 outline-none text-emerald-800 shadow-sm cursor-pointer" 
+                        />
+                      </div>
+                      
+                      <span className="text-emerald-400 font-bold self-center text-lg">-</span>
+                      
+                      {/* Ô Ngày kết thúc: Tương tự */}
+                      <div className="relative">
+                        <Calendar className="absolute left-3 top-1/2 -translate-y-1/2 text-emerald-600" size={18} />
+                        <input 
+                            type="date" 
+                            value={endDate} 
+                            onChange={(e) => setEndDate(e.target.value)} 
+                            className="pl-10 pr-4 py-2.5 bg-white border border-emerald-200 rounded-xl text-sm font-bold focus:ring-2 focus:ring-emerald-500 outline-none text-emerald-800 shadow-sm cursor-pointer" 
+                        />
+                      </div>
+                      
+                      {/* Nút Kiểm tra: To hơn, nổi bật hơn */}
+                      <button 
+                        onClick={handleCalculateProfit} 
+                        className="px-6 py-2.5 bg-emerald-500 hover:bg-emerald-600 text-white text-sm font-bold rounded-xl shadow-md shadow-emerald-200 active:scale-95 transition"
+                      >
+                        Kiểm tra
+                      </button>
+                  </div>
+              </div>
+
+              {/* TAB NAVIGATION: Đã đưa Cơ cấu danh mục lên đầu */}
+              <div className="bg-white border-b border-emerald-50 px-4 pt-4">
+                  <div className="flex gap-8 overflow-x-auto">
+                      
+                      {/* Tab 1: Cơ cấu danh mục (ĐÃ CHUYỂN LÊN ĐẦU) */}
+                      <button 
+                        onClick={() => setActiveHistoryTab('allocation')} 
+                        className={`pb-3 text-base font-medium border-b-2 transition whitespace-nowrap ${
+                          activeHistoryTab === 'allocation' 
+                            ? 'border-emerald-600 text-gray-900' 
+                            : 'border-transparent text-gray-500 hover:text-emerald-600'
+                        }`}
+                      >
+                        <span className="flex items-center gap-2"><PieChartIcon size={18}/> Cơ cấu danh mục</span>
+                      </button>
+
+                      {/* Tab 2: Nhật ký Lãi/Lỗ */}
+                      <button 
+                        onClick={() => setActiveHistoryTab('performance')} 
+                        className={`pb-3 text-base font-medium border-b-2 transition whitespace-nowrap ${
+                          activeHistoryTab === 'performance' 
+                            ? 'border-emerald-600 text-gray-900' 
+                            : 'border-transparent text-gray-500 hover:text-emerald-600'
+                        }`}
+                      >
+                        <span className="flex items-center gap-2"><Activity size={18}/> Nhật ký Lãi/Lỗ</span>
+                      </button>
+
+                      {/* Tab 3: Nhật ký Khớp lệnh */}
+                      <button 
+                        onClick={() => setActiveHistoryTab('orders')} 
+                        className={`pb-3 text-base font-medium border-b-2 transition whitespace-nowrap ${
+                          activeHistoryTab === 'orders' 
+                            ? 'border-emerald-600 text-gray-900' 
+                            : 'border-transparent text-gray-500 hover:text-emerald-600'
+                        }`}
+                      >
+                        <span className="flex items-center gap-2"><List size={18}/> Nhật ký Khớp lệnh</span>
+                      </button>
+
+                      {/* Tab 4: Nhật ký Dòng tiền */}
+                      <button 
+                        onClick={() => setActiveHistoryTab('cashflow')} 
+                        className={`pb-3 text-base font-medium border-b-2 transition whitespace-nowrap ${
+                          activeHistoryTab === 'cashflow' 
+                            ? 'border-emerald-600 text-gray-900' 
+                            : 'border-transparent text-gray-500 hover:text-emerald-600'
+                        }`}
+                      >
+                        <span className="flex items-center gap-2"><Wallet size={18}/> Nhật ký Dòng tiền</span>
+                      </button>
+                  </div>
+              </div>
+
+              <div className="p-6 min-h-[400px] bg-slate-50/30">
+                                                   
+                  {/* --- 1. NỘI DUNG TAB: CƠ CẤU DANH MỤC (Mặc định) --- */}
+                  {activeHistoryTab === 'allocation' && (
+                      <div className="animate-in fade-in zoom-in duration-300 min-h-[400px] flex items-center justify-center relative">
+                        {(!data?.holdings || data.holdings.length === 0) ? (
+                           <div className="text-slate-400 italic">Chưa có cổ phiếu nào trong danh mục.</div>
+                        ) : (
+                          <div className="w-full h-[400px] relative">
+                            <div className="absolute inset-0 flex flex-col items-center justify-center pointer-events-none z-0">
+                                <p className="text-xs text-slate-400 font-bold uppercase tracking-widest mb-1">Tổng giá trị</p>
+                                <p className="text-xl font-bold text-slate-800">
+                                  {Math.floor(data?.total_stock_value || 0).toLocaleString()} <span className="text-xs text-slate-400">VNĐ</span>
+                                </p>
+                            </div>
+
+                            <ResponsiveContainer width="100%" height="100%">
+                              <PieChart>
+                                <Pie
+                                  data={data.holdings}
+                                  cx="50%"
+                                  cy="50%"
+                                  innerRadius={100}
+                                  outerRadius={140}
+                                  paddingAngle={2}
+                                  dataKey="current_value"
+                                  nameKey="ticker"
+                                  label={({ cx, cy, midAngle, innerRadius, outerRadius, percent, index, name }) => {
+                                    const RADIAN = Math.PI / 180;
+                                    const radius = innerRadius + (outerRadius - innerRadius) * 0.5;
+                                    const x = cx + (outerRadius + 30) * Math.cos(-midAngle * RADIAN);
+                                    const y = cy + (outerRadius + 30) * Math.sin(-midAngle * RADIAN);
+                                    
+                                    return (
+                                      <text x={x} y={y} fill="#374151" textAnchor={x > cx ? 'start' : 'end'} dominantBaseline="central" className="text-xs font-bold">
+                                        {`${name} (${(percent * 100).toFixed(1)}%)`}
+                                      </text>
+                                    );
+                                  }}
+                                >
+                                  {data.holdings.map((entry, index) => (
+                                    <Cell key={`cell-${index}`} fill={PIE_COLORS[index % PIE_COLORS.length]} stroke="white" strokeWidth={2} />
+                                  ))}
+                                </Pie>
+                                <Tooltip formatter={(value) => `${Math.floor(value).toLocaleString()} VNĐ`} contentStyle={{borderRadius: '12px', border: 'none', boxShadow: '0 10px 15px -3px rgba(0, 0, 0, 0.1)'}}/>
+                              </PieChart>
+                            </ResponsiveContainer>
+                          </div>
+                        )}
+                      </div>
+                  )}
+
+                  {/* --- 2. NỘI DUNG TAB: HIỆU SUẤT (Cập nhật font to) --- */}
+                  {activeHistoryTab === 'performance' && (
+                      <div className="animate-in fade-in zoom-in duration-300">
+                            {!historicalProfit ? (
+                              <div className="text-center text-slate-400 italic mt-10">Vui lòng chọn ngày và bấm "Kiểm tra".</div>
+                            ) : (
+                              <div className="bg-gradient-to-br from-white to-emerald-50 p-8 rounded-xl border border-emerald-100 shadow-sm flex flex-col md:flex-row items-center justify-between gap-6">
+                                  <div>
+                                      <p className="text-xs text-emerald-600 font-bold uppercase mb-2 tracking-widest">Tổng Lãi/Lỗ Ròng</p>
+                                      <p className={`text-4xl font-bold tracking-tighter ${historicalProfit.total_profit >= 0 ? 'text-emerald-600' : 'text-rose-600'}`}>
+                                      {historicalProfit.total_profit >= 0 ? '+' : ''}{Math.floor(historicalProfit.total_profit).toLocaleString()} <span className="text-lg font-bold text-slate-400">₫</span>
+                                      </p>
+                                  </div>
+                                  <div className="bg-white p-4 rounded-lg border border-emerald-100 text-center min-w-[120px]">
+                                      <p className="text-xs text-slate-400 font-bold uppercase mb-1">Số lệnh</p>
+                                      <p className="text-2xl font-bold text-emerald-900">{historicalProfit.trade_count}</p>
+                                  </div>
+                              </div>
+                            )}
+                      </div>
+                  )}
+
+                  {/* --- 3. NỘI DUNG TAB: KHỚP LỆNH (Đã chỉnh font to text-sm & rõ hơn) --- */}
+                  {activeHistoryTab === 'orders' && (
+                      <div className="animate-in fade-in zoom-in duration-300">
+                          <div className="overflow-hidden rounded-xl border border-emerald-100 shadow-sm bg-white">
+                              <table className="w-full text-left">
+                                  {/* Header giữ nguyên format chuẩn (màu xanh, text-xs, uppercase) */}
+                                  <thead className="bg-emerald-50/40 text-emerald-700 text-xs uppercase font-medium tracking-wider border-b border-emerald-200">
+                                      <tr><th className="p-4">Ngày</th><th className="p-4">Lệnh</th><th className="p-4">Chi tiết</th></tr>
+                                  </thead>
+                                  
+                                  <tbody className="divide-y divide-emerald-100">
+                                      {logs.filter(l => l.category === 'STOCK').map((log, i) => (
+                                          // THAY ĐỔI LỚN Ở ĐÂY: text-xs -> text-sm
+                                          <tr key={i} className="text-sm hover:bg-emerald-50 transition text-slate-600">
+                                              
+                                              {/* 1. Ngày: In đậm (font-bold) */}
+                                              <td className="p-4 font-bold text-slate-500">{new Date(log.date).toLocaleDateString('vi-VN')}</td>
+                                              
+                                              {/* 2. Loại lệnh: In đậm (font-bold) & Màu sắc rõ ràng */}
+                                              <td className={`p-4 font-bold ${log.type === 'BUY' ? 'text-emerald-600' : 'text-rose-500'}`}>{log.type}</td>
+                                              
+                                              {/* 3. Chi tiết: Chữ thường, màu đậm */}
+                                              <td className="p-4 font-medium text-slate-700">{log.content}</td>
+                                          </tr>
+                                      ))}
+                                  </tbody>
+                              </table>
+                          </div>
+                      </div>
+                  )}
+
+                  {/* --- 4. NỘI DUNG TAB: DÒNG TIỀN (Đã chỉnh font to & rõ hơn) --- */}
+                  {activeHistoryTab === 'cashflow' && (
+                      <div className="animate-in fade-in zoom-in duration-300 max-w-3xl mx-auto">
+                        <div className="mb-6 p-4 bg-emerald-50 rounded-xl border border-emerald-100 flex items-center justify-between shadow-sm">
+                          <div>
+                             <p className="text-xs text-emerald-600 font-bold uppercase mb-1 tracking-widest">Tiền mặt thực có</p>
+                             <h3 className="text-2xl font-bold text-slate-800 tracking-tight">
+                               {Math.floor(data?.cash_balance || 0).toLocaleString()} <span className="text-sm font-medium text-slate-400">vnd</span>
+                             </h3>
+                          </div>
+                          <div className="p-3 bg-white rounded-lg text-emerald-500 shadow-sm"><Wallet size={24} /></div>
+                        </div>
+                        <div className="space-y-4">
+                            {logs.filter(l => l.category === 'CASH').length > 0 ? (
+                              logs.filter(l => l.category === 'CASH').map((log, idx) => {
+                                const isPositive = ['DEPOSIT', 'INTEREST', 'DIVIDEND_CASH'].includes(log.type);
+                                const colorClass = isPositive ? 'bg-emerald-500' : 'bg-purple-500';
+                                const textClass = isPositive ? 'text-emerald-700' : 'text-purple-700';
+                                const bgClass = isPositive ? 'bg-emerald-50' : 'bg-purple-50';
+
+                                return (
+                                  <div key={idx} className="flex gap-4 items-start group">
+                                    {/* 1. NGÀY THÁNG: To hơn (text-sm) */}
+                                    <div className="min-w-[60px] text-right pt-2">
+                                        <p className="text-sm font-bold text-slate-500">{new Date(log.date).toLocaleDateString('vi-VN', {day: '2-digit', month: '2-digit'})}</p>
+                                    </div>
+                                    
+                                    <div className="relative flex flex-col items-center self-stretch"><div className={`w-3 h-3 rounded-full mt-2 ${colorClass} z-10 ring-4 ring-white`}></div><div className="w-0.5 bg-slate-100 flex-1 -mt-1 group-last:hidden"></div></div>
+                                    
+                                    <div className={`flex-1 p-3 rounded-xl border border-slate-100 shadow-sm hover:shadow-md transition ${bgClass}`}>
+                                       {/* 2. LOẠI LỆNH: To hơn (text-xs) */}
+                                       <div className="flex justify-between items-start mb-1">
+                                            <span className={`text-xs font-bold px-2 py-0.5 rounded-md bg-white/80 ${textClass}`}>{log.type}</span>
+                                       </div>
+                                       
+                                       {/* 3. NỘI DUNG: To hơn (text-sm) & In đậm (font-bold) */}
+                                       <p className="text-sm font-bold text-slate-700">{log.content}</p>
+                                    </div>
+                                  </div>
+                                );
+                              })
+                            ) : (<div className="text-center p-10 text-slate-400 italic">Chưa có giao dịch tiền mặt.</div>)}
+                        </div>
+                      </div>
+                  )}
+            </div>
+        </div>
+        </div>
+      </div>
+      
+            {/* MODAL: NẠP / RÚT TIỀN (Sửa Font chữ đen đậm + Nạp tiền) */}
+      {(showDeposit || showWithdraw) && (
+        <div className="fixed inset-0 bg-slate-900/40 flex items-center justify-center p-4 z-50 backdrop-blur-sm">
+          <div className="bg-white rounded-2xl p-8 w-full max-w-md shadow-2xl border border-emerald-100">
+            <h2 className={`text-xl font-bold mb-6 ${showDeposit ? 'text-emerald-600' : 'text-purple-600'} uppercase`}>
+              {showDeposit ? 'Nạp tiền' : 'Rút vốn'}
+            </h2>
+            <form onSubmit={showDeposit ? handleDeposit : handleWithdraw} className="space-y-6">
+              <div>
+                <label className="block text-[11px] font-medium text-gray-900 uppercase tracking-widest mb-2 ml-1 opacity-90">Số tiền muốn {showDeposit ? 'nạp' : 'rút'}</label>
+                <div className="relative flex items-center">
+                  <input type="text" required autoFocus className="w-full pl-4 pr-16 py-4 bg-slate-50 border border-slate-100 rounded-xl focus:ring-2 focus:ring-emerald-500 focus:bg-white outline-none text-3xl font-medium text-slate-700 transition-all placeholder:text-slate-200"
+                    value={amount} onChange={handleAmountChange} placeholder="0" />
+                  <span className="absolute right-4 text-slate-400 font-bold text-sm pointer-events-none">VNĐ</span>
+                </div>
+              </div>
+              <div>
+                <label className="block text-[11px] font-medium text-gray-900 uppercase tracking-widest mb-2 ml-1 opacity-90">Ghi chú giao dịch</label>
+                <input type="text" className="w-full p-4 bg-slate-50 border border-slate-100 rounded-xl focus:ring-2 focus:ring-emerald-500 focus:bg-white outline-none text-base font-medium text-slate-600 transition-all" 
+                  value={description} onChange={(e) => setDescription(e.target.value)} placeholder="..." />
+              </div>
+              <div className="flex gap-3 pt-2">
+                <button type="button" onClick={closeModals} className="flex-1 py-3.5 bg-rose-100 text-rose-600 font-bold hover:bg-rose-200 rounded-xl transition text-sm">Hủy</button>
+                <button type="submit" className={`flex-1 py-3.5 text-white font-bold rounded-xl shadow-lg shadow-emerald-100 active:scale-95 transition text-sm ${showDeposit ? 'bg-emerald-400 hover:bg-emerald-500' : 'bg-purple-600 hover:bg-purple-700'}`}>XÁC NHẬN</button>
+              </div>
+            </form>
+          </div>
+        </div>
+      )}
+
+      
+      {/* --- MODAL MUA CỔ PHIẾU (Đã chỉnh Layout: Thành tiền xuống dòng) --- */}
+      {showBuy && (
+        <div className="fixed inset-0 bg-slate-900/40 flex items-center justify-center p-4 z-50 backdrop-blur-sm">
+          <div className="bg-white rounded-2xl p-8 w-full max-w-md shadow-2xl border border-slate-100">
+            <h2 className="text-xl font-medium mb-6 text-slate-800 uppercase tracking-tight">Mua Cổ Phiếu</h2>
+            <form onSubmit={handleBuy} className="space-y-5">
+              
+              {/* 1. Mã Chứng Khoán */}
+              <div>
+                  <label className="block text-[11px] font-medium text-gray-900 uppercase mb-2 ml-1 tracking-widest opacity-90">Mã Chứng Khoán</label>
+                  <div className="relative">
+                    <input type="text" required autoFocus className="w-full p-4 bg-slate-50 border border-slate-100 rounded-xl focus:ring-2 focus:ring-emerald-500 focus:bg-white outline-none text-sm font-bold text-slate-700 transition-all uppercase placeholder:text-slate-300" 
+                      placeholder="VD: HPG" value={buyForm.ticker} onChange={(e) => setBuyForm({...buyForm, ticker: e.target.value.toUpperCase()})} />
+                    <span className="absolute right-4 top-1/2 -translate-y-1/2 text-xs font-bold text-slate-700 pointer-events-none">Khả dụng: {Math.floor(data?.cash_balance || 0).toLocaleString()} <span className="text-[10px] text-slate-400 font-medium">VNĐ</span></span>
+                  </div>
+              </div>
+
+              {/* 2. Grid 2 cột: Khối lượng & Giá */}
+              <div className="grid grid-cols-2 gap-4">
+                <div>
+                  <label className="block text-[11px] font-medium text-gray-900 uppercase mb-2 ml-1 tracking-widest opacity-90">Khối lượng</label>
+                  <input type="text" required className="w-full p-4 bg-slate-50 border border-slate-100 rounded-xl focus:ring-2 focus:ring-emerald-500 focus:bg-white outline-none text-sm font-bold text-slate-700 transition-all" 
+                    placeholder="100" value={buyForm.volume} onChange={(e) => handleVolumeChange(e, 'buy')} />
+                </div>
+                <div>
+                  <label className="block text-[11px] font-medium text-gray-900 uppercase mb-2 ml-1 tracking-widest opacity-90">Giá Đặt Mua</label>
+                  <div className="relative">
+                    <input type="text" required className="w-full p-4 bg-slate-50 border border-slate-100 rounded-xl focus:ring-2 focus:ring-emerald-500 focus:bg-white outline-none text-sm font-bold text-slate-700 transition-all"
+                        placeholder="0" value={buyForm.price} onChange={(e) => handlePriceChange(e, 'buy')} onBlur={() => handlePriceBlur('buy')} />
+                    <span className="absolute right-4 top-1/2 -translate-y-1/2 text-[10px] font-bold text-slate-400 pointer-events-none">VNĐ</span>
+                  </div>
+                </div>
+              </div>
+
+              {/* 3. Hàng riêng: Thành tiền (Full width) */}
+              <div className="pt-2"> {/* Thêm padding top để tách biệt chút */}
+                  <label className="block text-[11px] font-medium text-gray-900 uppercase mb-2 ml-1 tracking-widest opacity-90">Thành tiền (Dự kiến)</label>
+                  <div className="relative">
+                    <input 
+                      type="text" 
+                      readOnly 
+                      className="w-full p-4 bg-emerald-50/50 border border-emerald-100 rounded-xl outline-none text-lg font-bold text-emerald-600 cursor-not-allowed"
+                      value={(() => {
+                        const vol = parseInt(buyForm.volume.replace(/,/g, '')) || 0;
+                        const price = parseFloat(buyForm.price.replace(/,/g, '')) || 0;
+                        const total = vol * price * (1 + (buyForm.fee_rate || 0)); 
+                        return Math.floor(total).toLocaleString('en-US');
+                      })()} 
+                    />
+                    <span className="absolute right-4 top-1/2 -translate-y-1/2 text-xs font-bold text-emerald-600 pointer-events-none">VNĐ</span>
+                  </div>
+              </div>
+
+              {/* Nút bấm */}
+              <div className="flex gap-3 pt-4">
+                <button type="button" onClick={closeModals} className="flex-1 py-3.5 bg-rose-100 text-rose-600 font-bold hover:bg-rose-200 rounded-xl transition text-sm">Hủy</button>
+                <button type="submit" className="flex-1 py-3.5 bg-emerald-400 hover:bg-emerald-500 text-white font-bold rounded-xl shadow-lg shadow-emerald-100 active:scale-95 transition text-sm">XÁC NHẬN</button>
+              </div>
+            </form>
+          </div>
+        </div>
+      )}
+
+      
+      {/* --- MODAL BÁN CỔ PHIẾU (Đã cập nhật giao diện đồng bộ với Mua) --- */}
+      {showSell && (
+        <div className="fixed inset-0 bg-slate-900/40 flex items-center justify-center p-4 z-50 backdrop-blur-sm">
+          <div className="bg-white rounded-2xl p-8 w-full max-w-md shadow-2xl border border-rose-100">
+            <h2 className="text-xl font-medium mb-6 text-slate-800 uppercase tracking-tight">Bán Cổ Phiếu</h2>
+            <form onSubmit={handleSell} className="space-y-5">
+              
+              {/* 1. Mã Chứng Khoán (Readonly) */}
+              <div>
+                  <label className="block text-[11px] font-medium text-gray-900 uppercase mb-2 ml-1 tracking-widest opacity-90">Mã Chứng Khoán</label>
+                  <div className="relative">
+                    <input type="text" readOnly className="w-full p-4 bg-slate-50 border border-slate-100 rounded-xl outline-none text-sm font-bold text-slate-700 uppercase" value={sellForm.ticker} />
+                    <span className="absolute right-4 top-1/2 -translate-y-1/2 text-xs font-bold text-slate-700 pointer-events-none">Khả dụng: {sellForm.available?.toLocaleString()}</span>
+                  </div>
+              </div>
+
+              {/* 2. Grid 2 cột: Khối lượng & Giá */}
+              <div className="grid grid-cols-2 gap-4">
+                <div>
+                  <label className="block text-[11px] font-medium text-gray-900 uppercase mb-2 ml-1 tracking-widest opacity-90">Số lượng bán</label>
+                  <input type="text" required className="w-full p-4 bg-slate-50 border border-slate-100 rounded-xl focus:ring-2 focus:ring-emerald-500 focus:bg-white outline-none text-sm font-bold text-slate-700 transition-all" 
+                    value={sellForm.volume} onChange={(e) => handleVolumeChange(e, 'sell')} />
+                </div>
+                <div>
+                  <label className="block text-[11px] font-medium text-gray-900 uppercase mb-2 ml-1 tracking-widest opacity-90">Giá Bán</label>
+                  <div className="relative">
+                    <input type="text" required className="w-full p-4 bg-slate-50 border border-slate-100 rounded-xl focus:ring-2 focus:ring-emerald-500 focus:bg-white outline-none text-sm font-bold text-slate-700 transition-all" 
+                      placeholder="0" value={sellForm.price} onChange={(e) => handlePriceChange(e, 'sell')} onBlur={() => handlePriceBlur('sell')} />
+                    <span className="absolute right-4 top-1/2 -translate-y-1/2 text-[10px] font-bold text-slate-400 pointer-events-none">VNĐ</span>
+                  </div>
+                </div>
+              </div>
+
+              {/* 3. Hàng riêng: Thành tiền thực nhận (Đã đổi sang màu XANH) */}
+              <div className="pt-2">
+                  <label className="block text-[11px] font-medium text-gray-900 uppercase mb-2 ml-1 tracking-widest opacity-90">Thành tiền (Dự kiến nhận)</label>
+                  <div className="relative">
+                    <input 
+                      type="text" 
+                      readOnly 
+                      // Đổi class màu nền và chữ sang emerald (xanh)
+                      className="w-full p-4 bg-emerald-50/50 border border-emerald-100 rounded-xl outline-none text-lg font-bold text-emerald-600 cursor-not-allowed"
+                      value={(() => {
+                        const vol = parseInt(sellForm.volume.toString().replace(/,/g, '')) || 0;
+                        const price = parseFloat(sellForm.price.toString().replace(/,/g, '')) || 0;
+                        const total = vol * price * (1 - 0.0025); 
+                        return Math.floor(total).toLocaleString('en-US');
+                      })()} 
+                    />
+                    {/* Đổi màu chữ VNĐ sang emerald (xanh) */}
+                    <span className="absolute right-4 top-1/2 -translate-y-1/2 text-xs font-bold text-emerald-600 pointer-events-none">VNĐ</span>
+                  </div>
+              </div>
+
+              {/* Nút bấm (Đã đổi màu đồng bộ với form Mua) */}
+              <div className="flex gap-3 pt-4">
+                {/* Nút Hủy: Nền đỏ nhạt, chữ đỏ */}
+                <button type="button" onClick={closeModals} className="flex-1 py-3.5 bg-rose-100 text-rose-600 font-bold hover:bg-rose-200 rounded-xl transition text-sm">Hủy</button>
+                {/* Nút Xác nhận: Nền xanh, chữ trắng */}
+                <button type="submit" className="flex-1 py-3.5 bg-emerald-400 hover:bg-emerald-500 text-white font-bold rounded-xl shadow-lg shadow-emerald-100 active:scale-95 transition text-sm">XÁC NHẬN BÁN</button>
+              </div>
+            </form>
+          </div>
+        </div>
+      )}      
+
+    </main>
+  );
+}
+// 1. Component SummaryCard (Đã thêm logic Blur)
+// 1. Component SummaryCard (Đã chỉnh Font Đậm & Màu rõ nét)
+// 1. Component SummaryCard (Đã thêm dấu phẩy ngăn cách & Font thanh mảnh)
+function SummaryCard({ title, value, icon, color, bg, isPrivate, trends }) {
+  
+  // Logic: Nếu value là số (hoặc chuỗi số), tự động thêm dấu phẩy. 
+  // Nếu là chữ thì giữ nguyên.
+  const formattedValue = (value && !isNaN(String(value).replace(/,/g, ''))) 
+    ? Number(String(value).replace(/,/g, '')).toLocaleString('en-US') 
+    : value;
+
+  return (
+    <div className="bg-white p-6 rounded-2xl shadow-lg border border-emerald-100 hover:shadow-xl transition duration-200">
+      <div className="flex justify-between items-start mb-4">
+        <div>
+           {/* TITLE: Giữ nguyên độ rõ nét */}
+           <p className="text-xs font-bold text-emerald-900 uppercase tracking-widest mb-1 opacity-80">{title}</p>
+           
+           {/* VALUE: Đã sửa thành 'font-medium' (Thanh mảnh) và dùng 'formattedValue' (Có dấu phẩy) */}
+           <h3 className={`text-2xl font-medium tracking-tight ${color}`}>
+             {isPrivate ? '******' : formattedValue} 
+             <span className="text-xs text-slate-400 font-bold ml-1">VNĐ</span>
+           </h3>
+        </div>
+        <div className={`p-3 rounded-xl ${bg} ${color} shadow-sm`}>
+          {icon}
+        </div>
+      </div>
+
+      {/* TRENDS: Phần % Tăng giảm */}
+      {trends && (
+        <div className="grid grid-cols-4 gap-2 border-t border-slate-50 pt-3 mt-1">
+          {trends.map((t, i) => (
+            <div key={i} className="text-center">
+              <p className="text-[10px] font-bold text-slate-600 uppercase mb-0.5">{t.label}</p>
+              <p className={`text-[11px] font-bold ${t.value >= 0 ? 'text-emerald-600' : 'text-rose-500'}`}>
+                {t.value > 0 ? '+' : ''}{t.value}%
+              </p>
+            </div>
+          ))}
+        </div>
+      )}
+    </div>
+  );
+}
+
+// 2. Component PerfBox (Đã thêm logic Blur)
+function PerfBox({ label, data, isPrivate }) {
+  const isProfit = (data?.val || 0) >= 0;
+  const colorClass = isProfit ? "text-emerald-600" : "text-rose-500";
+
+  return (
+    <div className="p-6 text-center hover:bg-emerald-100 transition">
+      <p className="text-gray-900 text-[11px] uppercase font-medium mb-3 tracking-[0.2em] opacity-90">
+        {label}
+      </p>
+      
+      {/* LOGIC CHE MỜ SỐ TIỀN */}
+      <p className={`text-xl font-bold tracking-tighter transition-all duration-300 ${colorClass} ${isPrivate ? 'blur-md select-none opacity-50' : 'blur-0'}`}>
+        {isProfit ? '+' : ''}{Math.floor(data?.val || 0).toLocaleString()}
+      </p>
+      
+      {/* LOGIC CHE MỜ PHẦN TRĂM (NẾU MUỐN) */}
+      <p className={`text-xs font-medium mt-1 opacity-80 ${colorClass} ${isPrivate ? 'blur-sm select-none' : ''}`}>
+        ({isProfit ? '+' : ''}{data?.pct?.toFixed(2)}%)
+      </p>
+    </div>
+  );
+}

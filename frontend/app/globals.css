@@ -1,0 +1,38 @@
+@import "tailwindcss";
+/* Thêm vào cuối file frontend/app/globals.css */
+
+/* Class riêng cho input tiền tệ để không đụng hàng */
+.money-input-group {
+  position: relative;
+  display: flex;
+  align-items: center;
+  margin-bottom: 1rem;
+}
+
+.money-input-soft {
+  width: 100%;
+  font-size: 1.25rem; /* To rõ */
+  padding: 12px 16px;
+  border-radius: 12px; /* Bo góc mềm mại */
+  border: 1px solid #e5e7eb;
+  background-color: #f9fafb; /* Xám rất nhạt */
+  color: #111827;
+  font-weight: 500; /* Không bold (700) nhưng rõ hơn normal (400) */
+  outline: none;
+  transition: all 0.2s;
+  font-family: inherit; /* Ăn theo font của Next.js */
+}
+
+.money-input-soft:focus {
+  background-color: #ffffff;
+  border-color: #10b981; /* Màu xanh lá stock */
+  box-shadow: 0 0 0 4px rgba(16, 185, 129, 0.1);
+}
+
+.currency-suffix {
+  position: absolute;
+  right: 16px;
+  color: #6b7280;
+  font-weight: 600;
+  pointer-events: none;
+}

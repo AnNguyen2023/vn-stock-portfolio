@@ -1,0 +1,82 @@
+==============================
+GIT QUICK NOTES – SYNC LOCAL → GITHUB
+Repo: vn-stock-portfolio
+Branch chuẩn: main
+==============================
+
+LUÔN LÀM TRƯỚC KHI COMMIT
+------------------------
+git pull --rebase origin main
+
+I. CẤU HÌNH GIT (chạy 1 lần cho mỗi máy)
+--------------------------------------
+git config --global user.name "An Nguyen"
+git config --global user.email "email_dang_dung_tren_github@example.com"
+
+Kiểm tra:
+git config --global --list
+
+--------------------------------------
+
+II. CLONE PROJECT (khi dùng laptop mới)
+--------------------------------------
+cd /e
+git clone https://github.com/AnNguyen2023/vn-stock-portfolio.git
+cd vn-stock-portfolio
+
+--------------------------------------
+
+III. KIỂM TRA TRẠNG THÁI
+--------------------------------------
+git status
+git branch
+git remote -v
+
+--------------------------------------
+
+IV. QUY TRÌNH LÀM VIỆC CHUẨN (MỖI LẦN CODE)
+--------------------------------------
+git checkout main
+git pull --rebase origin main
+git add -A
+git commit -m "your message"
+git push origin main
+
+--------------------------------------
+
+V. FIX LỖI THƯỜNG GẶP
+--------------------------------------
+
+1) Local là master, remote là main
+git branch -M master main
+git push -u origin main
+
+2) Lỗi non-fast-forward
+git pull --rebase origin main
+git push origin main
+
+3) Push nhầm file nhạy cảm
+git rm --cached backend/.env
+git rm -r --cached backend/__pycache__
+git commit -m "Remove env and cache"
+git push
+
+--------------------------------------
+
+VI. GHI NHỚ
+--------------------------------------
+- LUÔN pull trước khi commit
+- KHÔNG push .env, __pycache__, node_modules
+- Dùng .gitignore
+- Mọi máy đều làm giống nhau
+
+==============================
+
+pip install fastapi uvicorn sqlalchemy python-dotenv requests psycopg2-binary pydantic
+
+Nếu sau này bạn muốn khởi động lại hoặc dừng Postgres, hãy dùng các lệnh sau:
+Khởi động: brew services start postgresql@16
+Dừng: brew services stop postgresql@16
+Kiểm tra trạng thái: brew services list
+
+./venv/bin/python -c "import models; models.Base.metadata.create_all(bind=models.engine)"
