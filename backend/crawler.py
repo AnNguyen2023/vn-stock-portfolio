@@ -1,94 +1,144 @@
-# File: backend/crawler.py - Hoàn chỉnh, ổn định (VPS realtime + vnstock historical VCI)
 import requests
-from datetime import date, timedelta
+from datetime import datetime, timedelta
+
+# --- CẤU HÌNH CACHE BIẾN GLOBAL ---
+PRICE_CACHE = {}
+LAST_CRAWL_TIME = None
+CACHE_DURATION = 30  # Giây
 
 def get_current_prices(tickers: list):
     """
-    Lấy giá hiện tại từ VPS Datafeed (real-time)
+    Lấy giá hiện tại của danh sách mã cổ phiếu.
+    Sử dụng Cache để tăng tốc độ phản hồi.
     """
+    global PRICE_CACHE, LAST_CRAWL_TIME
+    
     if not tickers:
         return {}
-    
-    symbols = ",".join(tickers).upper()
-    url = f"https://bgapidatafeed.vps.com.vn/getliststockdata/{symbols}"
-    
-    headers = {
-        "User-Agent": "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36",
-        "Accept": "application/json"
-    }
-    
+
+    now = datetime.now()
+
+    # 1. KIỂM TRA CACHE: 
+    # Nếu thời gian chưa quá 30 giây và tất cả mã cần lấy đều có trong Cache
+    if LAST_CRAWL_TIME and (now - LAST_CRAWL_TIME).seconds < CACHE_DURATION:
+        # Kiểm tra xem các mã yêu cầu đã có đủ trong cache chưa
+        if all(t in PRICE_CACHE for t in tickers):
+            # print(f"DEBUG: Trả về giá từ CACHE cho {tickers}")
+            return {t: PRICE_CACHE[t] for t in tickers}
+
+    # 2. GỌI API VPS (Nếu Cache hết hạn hoặc thiếu mã)
+    # print(f"DEBUG: Gọi API VPS lấy giá mới cho {tickers}")
     try:
-        response = requests.get(url, headers=headers, timeout=10)
-        data = response.json()
+        # Giả sử đây là endpoint của VPS hoặc một Datafeed bạn đang dùng
+        # URL ví dụ: bảng giá Lightning VPS
+        url = f"https://bgapidatafeed.vps.com.vn/getliststockdata/{','.join(tickers)}"
         
-        price_map = {}
-        for item in data:
-            ticker = item.get("sym")
-            price = item.get("lastPrice") or item.get("c") or item.get("r")
-            if price:
-                price_map[ticker] = float(price) * 1000
-        return price_map
+        response = requests.get(url, timeout=5)
+        if response.status_code == 200:
+            data = response.json()
+            
+            # Cập nhật Cache mới
+            new_prices = {}
+            for item in data:
+                symbol = item.get('sym')
+                # Giá khớp lệnh (lastPrice) thường nhân 1000 vì đơn vị sàn VN là x10
+                last_price = item.get('lastPrice', 0) * 1000
+                
+                if last_price == 0:
+                    # Nếu không có giá khớp, lấy giá tham chiếu (re)
+                    last_price = item.get('re', 0) * 1000
+                
+                new_prices[symbol] = last_price
+            
+            # Lưu vào bộ nhớ tạm
+            PRICE_CACHE.update(new_prices)
+            LAST_CRAWL_TIME = now
+            
+            return {t: PRICE_CACHE.get(t, 0) for t in tickers}
+            
     except Exception as e:
-        print(f"Lỗi khi crawl giá từ VPS: {e}")
-        return {}
+        print(f"Lỗi Crawler: {e}")
+        # Nếu lỗi, cố gắng trả về giá cũ trong Cache nếu có
+        return {t: PRICE_CACHE.get(t, 0) for t in tickers}
 
-def get_historical_prices(ticker: str, period: str = "1m") -> list:
-    """
-    Lấy giá lịch sử dùng Vnstock bản mới (Source: VCI).
-    Output: [{'date': '2025-12-01', 'close': 26500.5}, ...]
-    """
+    return {}
+
+def get_historical_prices(ticker: str, period: str = "1m"):
     try:
-        end_date = date.today()
+        from vnstock3 import Vnstock
+        import pandas as pd
+        
+        end_date = datetime.now().strftime('%Y-%m-%d')
+        # Tính toán start_date (giữ nguyên logic cũ của bạn)
         days_map = {"1m": 30, "3m": 90, "6m": 180, "1y": 365}
-        days = days_map.get(period, 30)
-        start_date = end_date - timedelta(days=days)
-        start_str = start_date.strftime('%Y-%m-%d')
-        end_str = end_date.strftime('%Y-%m-%d')
+        start_date = (datetime.now() - timedelta(days=days_map.get(period, 30))).strftime('%Y-%m-%d')
 
-        ticker = ticker.upper()
-        if ticker in ['VNINDEX', '^VNI', 'VNI']:
-            ticker = 'VNINDEX'
-
-        # Primary: Vnstock.stock.quote.history (new API)
-        import vnstock
-        stock = vnstock.Vnstock().stock(symbol=ticker, source='VCI')
-        df = stock.quote.history(start=start_str, end=end_str)
+        # Dùng nguồn 'TCBS' để lấy Index ổn định hơn
+        stock = Vnstock().stock(symbol=ticker, source='TCBS')
+        df = stock.quote.history(start=start_date, end=end_date, interval='1D')
 
         if df is not None and not df.empty:
-            if 'time' in df.columns:
-                df = df.rename(columns={'time': 'date'})
-            if 'close' in df.columns:
-                df = df[['date', 'close']]
-                df['date'] = df['date'].astype(str)
-                return df.to_dict(orient='records')
-        
-        return []
-
+            df = df.reset_index()
+            # print(f"DEBUG: Da lay duoc {len(df)} dong du lieu cho {ticker}")
+            
+            result = []
+            for _, row in df.iterrows():
+                # vnstock3 thuong dung cot 'time' hoac 'date'
+                time_val = row.get('time') or row.get('date')
+                result.append({
+                    "date": time_val.strftime('%Y-%m-%d') if hasattr(time_val, 'strftime') else str(time_val),
+                    "close": float(row['close'])
+                })
+            return result
+        else:
+            print(f"WARNING: Khong co du lieu cho {ticker}")
+            
     except Exception as e:
-        print(f"Lỗi crawl historical {ticker} (VCI): {e}")
-        # Fallback: vnstock.vci.stock_historical_data
-        try:
-            from vnstock.vci import stock_historical_data
-            df = stock_historical_data(ticker, start_str, end_str)
-            if df is not None and not df.empty:
-                if 'time' in df.columns:
-                    df = df.rename(columns={'time': 'date'})
-                df['date'] = df['date'].astype(str)
-                return df[['date', 'close']].to_dict(orient='records')
-        except:
-            pass
-        return []
+        print(f"Lỗi lấy lịch sử {ticker}: {e}")
+    
+    return []
+    """
+    Lấy dữ liệu lịch sử bằng vnstock3 (Cập nhật 2026)
+    """
+    try:
+        from vnstock3 import Vnstock
+        
+        # 1. Thiết lập khoảng thời gian
+        end_date = datetime.now().strftime('%Y-%m-%d')
+        if period == "1m":
+            start_date = (datetime.now() - timedelta(days=30)).strftime('%Y-%m-%d')
+        elif period == "3m":
+            start_date = (datetime.now() - timedelta(days=90)).strftime('%Y-%m-%d')
+        elif period == "6m":
+            start_date = (datetime.now() - timedelta(days=180)).strftime('%Y-%m-%d')
+        else:
+            start_date = (datetime.now() - timedelta(days=365)).strftime('%Y-%m-%d')
 
-# Test tự động
-if __name__ == "__main__":
-    print("=== Test Realtime VPS ===")
-    prices = get_current_prices(["VPS", "VCB"])
-    print(prices)
+        # 2. Khởi tạo Vnstock
+        stock = Vnstock().stock(symbol=ticker, source='VCI') # VCI hoặc TCBS
 
-    print("\n=== Test Historical VPS 1m ===")
-    hist_vps = get_historical_prices("VPS", "1m")
-    print(f"Rows: {len(hist_vps)}, Sample: {hist_vps[:2] if hist_vps else 'Empty'}")
+        # 3. Lấy dữ liệu (Xử lý riêng cho chỉ số VNINDEX và Cổ phiếu)
+        if ticker.upper() == "VNINDEX":
+            # Đối với chỉ số VNINDEX
+            df = stock.quote.history(start=start_date, end=end_date, interval='1D')
+        else:
+            # Đối với cổ phiếu thường
+            df = stock.quote.history(start=start_date, end=end_date, interval='1D')
 
-    print("\n=== Test Historical VNINDEX 3m ===")
-    hist_vni = get_historical_prices("VNINDEX", "3m")
-    print(f"Rows: {len(hist_vni)}, Sample: {hist_vni[:2] if hist_vni else 'Empty'}")
+        if df is not None and not df.empty:
+            # Reset index để đưa cột 'time' ra ngoài nếu nó đang là index
+            df = df.reset_index()
+            
+            result = []
+            for _, row in df.iterrows():
+                # Chuyển đổi format ngày tháng để Recharts (Frontend) đọc được
+                result.append({
+                    "date": row['time'].strftime('%Y-%m-%d') if hasattr(row['time'], 'strftime') else str(row['time']),
+                    "close": float(row['close'])
+                })
+            return result
+            
+    except Exception as e:
+        print(f"Lỗi lấy lịch sử {ticker}: {e}")
+    
+    return [] 

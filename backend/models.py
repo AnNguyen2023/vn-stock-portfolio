@@ -55,6 +55,8 @@ class TickerHolding(Base):
 class StockTransaction(Base):
     __tablename__ = "stock_transactions"
     id = Column(Integer, primary_key=True, index=True)
+    # Thêm index=True vào đây
+    transaction_date = Column(DateTime, default=datetime.now, index=True)
     ticker = Column(String(10), index=True)
     type = Column(Enum(TransactionType))
     volume = Column(Integer)
@@ -69,6 +71,8 @@ class StockTransaction(Base):
 class RealizedProfit(Base):
     __tablename__ = "realized_profit"
     id = Column(Integer, primary_key=True, index=True)
+    # Thêm index=True vào đây
+    sell_date = Column(DateTime, default=datetime.now, index=True)
     ticker = Column(String(10))
     sell_date = Column(DateTime, default=datetime.now)
     volume = Column(Integer)
@@ -80,6 +84,8 @@ class RealizedProfit(Base):
 class CashFlow(Base):
     __tablename__ = "cash_flow"
     id = Column(Integer, primary_key=True, index=True)
+    # Thêm index=True vào đây
+    created_at = Column(DateTime, default=datetime.now, index=True)
     type = Column(Enum(CashFlowType))
     amount = Column(Numeric(18, 2))
     description = Column(String(255))

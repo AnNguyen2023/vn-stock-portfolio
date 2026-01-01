@@ -1,10 +1,24 @@
 // File: frontend/lib/api.js
 import axios from 'axios';
 
+import { toast } from 'sonner'; 
+
 // 1. Khai báo đường dẫn Backend (Sửa lỗi API_URL is not defined)
 const API_URL = 'http://localhost:8000';
 
-// --- CÁC HÀM GỌI API ---
+
+axios.interceptors.response.use(
+  (response) => response,
+  (error) => {
+    if (!error.response) {
+      // CHỈ HIỆN TOAST, KHÔNG THROW LỖI LÀM SẬP APP
+      toast.error('Máy chủ Backend đang tắt hoặc lỗi mạng!');
+    }
+    return Promise.reject(error);
+  }
+);
+
+// ... Các hàm export bên dưới giữ nguyên ...
 
 // Lấy thông tin Portfolio (Danh mục, tiền, NAV)
 export const getPortfolio = async () => {
@@ -50,7 +64,6 @@ export const sellStock = async (data) => {
     return axios.post(`${API_URL}/sell`, data);
 };
 
-// --- HÀM MỚI: LẤY DỮ LIỆU BIỂU ĐỒ ---
 export const getHistoricalData = async (ticker, period = '1m') => {
   try {
     const res = await axios.get(`${API_URL}/historical`, {
@@ -58,7 +71,10 @@ export const getHistoricalData = async (ticker, period = '1m') => {
     });
     return res.data; 
   } catch (error) {
-    console.error(`Lỗi lấy lịch sử ${ticker}:`, error);
+    // Thay vì console.error, chúng ta bắn thông báo lỗi
+    toast.error('Lỗi kết nối bảng giá', { 
+      description: `Không thể lấy dữ liệu lịch sử của mã ${ticker}. Vui lòng kiểm tra server.` 
+    });
     return null;
   }
 };

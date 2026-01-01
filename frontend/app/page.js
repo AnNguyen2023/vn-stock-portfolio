@@ -19,16 +19,34 @@ import {
   PieChart, Pie, Cell // <--- Đã thêm 3 thành phần này
 } from 'recharts';
 
-// Bảng màu cho Biểu đồ tròn (Cơ cấu danh mục)
+import { Toaster, toast } from 'sonner';
+
+// 1. Bảng màu cho Biểu đồ tròn (Cơ cấu danh mục) - 10 màu
 const PIE_COLORS = [
-  '#16a34a', // Xanh lá (Lớn nhất)
+  '#16a34a', // Xanh lá
   '#2563eb', // Xanh dương
-  '#1e40af', // Xanh đậm
   '#ea580c', // Cam đậm
   '#ca8a04', // Vàng nghệ
   '#9333ea', // Tím
+  '#06b6d4', // Xanh cyan
+  '#f43f5e', // Đỏ hồng
+  '#84cc16', // Xanh lá mạ
   '#64748b', // Xám
-  '#be123c', // Đỏ đô
+  '#1e40af', // Xanh đậm
+];
+
+// Bảng màu cho các đường biểu đồ cổ phiếu (Line Chart) - 10 màu phân biệt
+const COLORS = [
+  '#10b981', // Xanh lục (Emerald)
+  '#f59e0b', // Vàng cam (Amber)
+  '#ec4899', // Hồng cánh sen (Pink)
+  '#8b5cf6', // Tím (Violet)
+  '#06b6d4', // Xanh lơ (Cyan)
+  '#f43f5e', // Đỏ hồng (Rose)
+  '#ea580c', // Cam đậm (Orange)
+  '#84cc16', // Xanh lá mạ (Lime)
+  '#a855f7', // Tím tươi (Purple)
+  '#14b8a6', // Xanh ngọc (Teal)
 ];
 
 export default function Dashboard() {
@@ -81,49 +99,51 @@ export default function Dashboard() {
   // --- 2. LOGIC BIỂU ĐỒ (Đã cập nhật xử lý Portfolio/VNINDEX/Stock) ---
   
   const normalizeData = (responses, tickers) => {
-    if (!responses || responses.length === 0) return [];
-    const baseData = responses[0]?.data || [];
-    if (baseData.length === 0) return [];
+    // Tìm response nào có dữ liệu thực tế đầu tiên để làm mốc thời gian (Base)
+    const validResponse = responses.find(r => r?.data && r.data.length > 0);
+    if (!validResponse) return [];
 
+    const baseData = validResponse.data;
     const priceMaps = {};
     const firstPrices = {};
 
     tickers.forEach((ticker, index) => {
-      const data = responses[index]?.data || [];
-      if (data.length > 0) {
+      const stockData = responses[index]?.data || [];
+      if (stockData.length > 0) {
         priceMaps[ticker] = {};
-        data.forEach(item => { priceMaps[ticker][item.date] = item.close; });
-        firstPrices[ticker] = data[0].close;
+        stockData.forEach(item => { priceMaps[ticker][item.date] = item.close; });
+        firstPrices[ticker] = stockData[0].close;
       }
     });
 
     return baseData.map((item) => {
       const dateStr = item.date;
-      const point = { date: dateStr.slice(5) };
+      const point = { date: dateStr.slice(5) }; // Lấy MM-DD
 
-      // Xử lý PORTFOLIO (Luôn có key này)
-      point['PORTFOLIO'] = 0; 
-
-      // Xử lý các mã khác
       tickers.forEach(ticker => {
-        const currentPrice = priceMaps[ticker]?.[dateStr];
-        const startPrice = firstPrices[ticker];
-        if (currentPrice && startPrice) {
-          point[ticker] = ((currentPrice - startPrice) / startPrice) * 100;
+        if (ticker === 'PORTFOLIO') {
+          // Tạm thời để Portfolio là 0 nếu chưa có logic tính NAV lịch sử phức tạp
+          point['PORTFOLIO'] = 0; 
         } else {
-          point[ticker] = 0;
+          const currentPrice = priceMaps[ticker]?.[dateStr];
+          const startPrice = firstPrices[ticker];
+          if (currentPrice && startPrice) {
+            // Tính % tăng trưởng so với ngày đầu tiên trong chu kỳ
+            point[ticker] = ((currentPrice - startPrice) / startPrice) * 100;
+          } else {
+            point[ticker] = 0;
+          }
         }
       });
       return point;
     });
   };
 
+  // Tìm hàm này trong page.js của bạn và cập nhật logic dependency
   useEffect(() => {
     const fetchChart = async () => {
-      // Lọc ra các mã cổ phiếu THỰC TẾ (trừ Portfolio) để gọi API
+      // Logic cũ của bạn...
       const apiTargets = selectedComparisons.filter(t => t !== 'PORTFOLIO');
-      
-      // Nếu không còn mã nào (chỉ chọn Portfolio), mượn tạm VNINDEX để lấy khung thời gian
       const effectiveTargets = apiTargets.length > 0 ? apiTargets : ['VNINDEX'];
 
       const requests = effectiveTargets.map(ticker => getHistoricalData(ticker, chartRange));
@@ -132,7 +152,9 @@ export default function Dashboard() {
       const finalData = normalizeData(responses, effectiveTargets);
       setChartData(finalData);
     };
+
     fetchChart();
+    // QUAN TRỌNG: Phải có selectedComparisons và chartRange trong mảng này
   }, [selectedComparisons, chartRange]);
 
   const toggleComparison = (ticker) => {
@@ -147,19 +169,35 @@ export default function Dashboard() {
     }
   };
 
-  // --- 3. DATA REALTIME ---
+   
   const fetchAllData = async () => {
     try {
-      const resP = await getPortfolio().catch(() => ({data: null}));
-      const resL = await getAuditLog().catch(() => ({data: []}));
-      const resEf = await getPerformance().catch(() => ({data: null}));
+      // Bọc toàn bộ vào try để nếu getPortfolio lỗi mạng, nó sẽ nhảy vào catch
+      const resP = await getPortfolio();
       
-      if(resP.data) setData(resP.data);
-      if(resL.data) setLogs(resL.data);
-      if(resEf.data) setPerf(resEf.data);
-    } catch (error) { console.error("Lỗi:", error); }
-    setLoading(false);
+      if (resP?.data) {
+        setData(resP.data);
+        setLoading(false); 
+      }
+
+      // Các hàm chạy sau không cần await để tăng tốc
+      getAuditLog().then(res => res?.data && setLogs(res.data)).catch(() => {});
+      getPerformance().then(res => res?.data && setPerf(res.data)).catch(() => {});
+
+    } catch (error) {
+      // Khi có lỗi mạng, setLoading(false) để thoát màn hình chờ
+      setLoading(false);
+      console.error("Lỗi kết nối Backend:", error);
+      // Thông báo Toast đỏ sẽ được Interceptor ở api.js tự động bắn ra
+    }
   };
+
+  useEffect(() => {
+    fetchAllData();
+    // Tự động làm mới mỗi 30 giây (không hiện loading lần nữa)
+    const interval = setInterval(fetchAllData, 30000);
+    return () => clearInterval(interval);
+  }, []);
 
   useEffect(() => {
     fetchAllData();
@@ -183,28 +221,43 @@ export default function Dashboard() {
     setAmount(new Intl.NumberFormat('en-US').format(rawValue));
   };
 
+  // 1. Cập nhật hàm nạp tiền
   const handleDeposit = async (e) => {
     e.preventDefault();
     if (!amount) return;
-    await depositMoney({ amount: parseFloat(amount.replace(/,/g, '')), description });
-    closeModals(); fetchAllData();
+    try {
+      const res = await depositMoney({ amount: parseFloat(amount.replace(/,/g, '')), description });
+      closeModals(); 
+      fetchAllData();
+      toast.success('Nạp tiền thành công', { 
+        description: `Đã cộng ${amount} VND vào tài khoản.` 
+      });
+    } catch (error) {
+      toast.error('Lỗi nạp tiền', { 
+        description: error.response?.data?.detail || 'Không thể kết nối đến máy chủ.' 
+      });
+    }
   };
 
+    // 2. Cập nhật hàm rút tiền
   const handleWithdraw = async (e) => {
     e.preventDefault();
     if (!amount) return;
     try {
-        const cleanAmount = parseFloat(amount.replace(/,/g, ''));
-        await withdrawMoney({ amount: cleanAmount, description });
-        closeModals(); 
-        fetchAllData();
-        alert("Rút tiền thành công!");
+      const cleanAmount = parseFloat(amount.replace(/,/g, ''));
+      await withdrawMoney({ amount: cleanAmount, description });
+      closeModals(); 
+      fetchAllData();
+      toast.success('Rút tiền thành công', { 
+        description: `Đã trừ ${amount} VND khỏi tài khoản.` 
+      });
     } catch (error) {
-        // Hiện thông báo lỗi cụ thể từ Backend (Ví dụ: "Không đủ số dư")
-        alert(error.response?.data?.detail || "Lỗi khi rút tiền");
+      toast.error('Lỗi rút tiền', { 
+        description: error.response?.data?.detail || 'Số dư không đủ hoặc lỗi hệ thống.' 
+      });
     }
-};
-
+  };
+  
   // --- LOGIC MUA/BÁN ---
   const handlePriceChange = (e, type) => {
     const val = e.target.value;
@@ -238,26 +291,44 @@ export default function Dashboard() {
     else setSellForm({ ...sellForm, volume: formatted });
   };
 
+    // 3. Cập nhật hàm Mua
   const handleBuy = async (e) => {
     e.preventDefault();
     try {
       const cleanPrice = parseFloat(buyForm.price.toString().replace(/,/g, ''));
       const cleanVolume = parseInt(buyForm.volume.toString().replace(/,/g, ''));
       await buyStock({ ...buyForm, volume: cleanVolume, price: cleanPrice });
-      closeModals(); fetchAllData(); alert("Mua thành công!");
-    } catch (error) { alert(error.response?.data?.detail || "Lỗi mua"); }
+      closeModals(); 
+      fetchAllData();
+      toast.success('Khớp lệnh MUA thành công', { 
+        description: `Đã mua ${cleanVolume} ${buyForm.ticker} giá ${cleanPrice.toLocaleString()}.` 
+      });
+    } catch (error) {
+      toast.error('Lệnh Mua thất bại', { 
+        description: error.response?.data?.detail || 'Vui lòng kiểm tra lại số dư tiền mặt.' 
+      });
+    }
   };
 
+    // 4. Cập nhật hàm Bán
   const handleSell = async (e) => {
     e.preventDefault();
     try {
       const cleanPrice = parseFloat(sellForm.price.toString().replace(/,/g, ''));
       const cleanVolume = parseInt(sellForm.volume.toString().replace(/,/g, ''));
       await sellStock({ ...sellForm, volume: cleanVolume, price: cleanPrice });
-      closeModals(); fetchAllData(); alert("Bán thành công!");
-    } catch (error) { alert(error.response?.data?.detail || "Lỗi bán"); }
+      closeModals(); 
+      fetchAllData();
+      toast.success('Khớp lệnh BÁN thành công', { 
+        description: `Đã bán ${cleanVolume} ${sellForm.ticker}.` 
+      });
+    } catch (error) {
+      toast.error('Lệnh Bán thất bại', { 
+        description: error.response?.data?.detail || 'Không đủ số lượng cổ phiếu khả dụng.' 
+      });
+    }
   };
-
+  // --- 5. TÍNH TOÁN LỊCH SỬ LÃI/LỔ THEO NGÀY ---
   const handleCalculateProfit = async () => {
     if (!startDate || !endDate) return alert("Vui lòng chọn đủ ngày");
     const res = await getHistorySummary(startDate, endDate);
@@ -270,13 +341,39 @@ export default function Dashboard() {
     setBuyForm({ ticker: '', volume: '', price: '', fee_rate: 0.0015 });
   };
 
-  if (loading && !data) return <div className="p-10 text-center font-sans text-emerald-600 font-medium">ĐANG TẢI DỮ LIỆU...</div>;
+  
 
   // Tạo list dropdown
   const holdingTickers = data?.holdings?.map(h => h.ticker) || [];
   const availableTickers = ['PORTFOLIO', 'VNINDEX', ...new Set(holdingTickers)];
 
   //---------------------------------------------------------------------------------------------------------------------//
+  // --- HIỆU ỨNG LOADING CHUYÊN NGHIỆP ---
+  // Chỉ chặn toàn màn hình nếu thực sự chưa có một tí dữ liệu nào (lần đầu tải trang)
+    if (loading && !data) {
+      return (
+        <div className="flex items-center justify-center min-h-screen bg-[#f8fafc]">
+          <div className="text-center">
+            {/* Vòng xoay Spinner */}
+            <div className="relative w-16 h-16 mx-auto mb-6">
+              <div className="absolute inset-0 border-4 border-emerald-100 rounded-full"></div>
+              <div className="absolute inset-0 border-4 border-emerald-500 rounded-full border-t-transparent animate-spin"></div>
+            </div>
+            
+            {/* Chữ thông báo với hiệu ứng Pulse (nhấp nháy) */}
+            <h2 className="text-xl font-bold text-emerald-900 tracking-tight mb-2 uppercase italic">INVEST JOURNAL</h2>
+            <div className="flex items-center justify-center gap-2 text-emerald-600 font-medium animate-pulse">
+              <RefreshCw size={16} className="animate-spin" />
+              <span className="text-sm tracking-widest uppercase">Đang kết nối hệ thống...</span>
+            </div>
+            
+            <p className="mt-8 text-slate-400 text-xs font-medium uppercase tracking-[0.3em]">v1.0.0 - Stable</p>
+          </div>
+        </div>
+      );
+    }
+
+  // Nếu đã có data (hoặc đang làm mới ngầm), nhảy xuống render giao diện chính bên dưới luôn
 return (
     <main className="min-h-screen bg-[#f8fafc] p-4 md:p-8 font-sans">
       <div className="max-w-7xl mx-auto">
@@ -308,6 +405,18 @@ return (
             </button>
             <button onClick={fetchAllData} className="p-2.5 bg-white border border-emerald-100 rounded-lg text-emerald-500 hover:text-emerald-700 transition shadow-sm">
               <RefreshCw size={20}/>
+            </button>
+            {/* Chèn nút này vào cạnh nút Refresh để test */}
+            <button 
+              onClick={() => {
+                toast.success('Thành công!', { description: 'Giao diện thông báo đã hoạt động.' });
+                toast.error('Lỗi!', { description: 'Đây là mẫu thông báo lỗi.' });
+                toast.warning('Cảnh báo!', { description: 'Kiểm tra lại số dư tài khoản.' });
+                toast.info('Thông tin', { description: 'Hệ thống đã cập nhật dữ liệu mới.' });
+              }}
+              className="p-2.5 bg-slate-100 rounded-lg text-slate-500 hover:bg-slate-200 transition"
+            >
+              Test Alert
             </button>
           </div>
         </div>
@@ -420,13 +529,25 @@ return (
           </div>
 
           <div className="p-6 h-[350px] w-full">
-            <ResponsiveContainer width="100%" height="100%">
-              <LineChart data={chartData} margin={{ top: 10, right: 10, left: -20, bottom: 0 }}>
-                <CartesianGrid strokeDasharray="3 3" stroke="#cbd5e1" fill="#ffffff" />
-                <XAxis dataKey="date" axisLine={false} tickLine={false} tick={{fill: '#111827', fontSize: 11, fontWeight: 500}} dy={10} />
-                <YAxis axisLine={false} tickLine={false} tick={{fill: '#111827', fontSize: 11, fontWeight: 500}} tickFormatter={(val) => `${val > 0 ? '+' : ''}${val.toFixed(1)}%`} />
-                <Tooltip contentStyle={{borderRadius: '12px', border: 'none', boxShadow: '0 10px 15px -3px rgba(0, 0, 0, 0.1)'}} formatter={(value) => [`${value.toFixed(2)}%`]} itemSorter={(item) => -item.value} />
-                <Legend wrapperStyle={{paddingTop: '20px', fontSize: '12px', fontWeight: 600, color: '#111827'}} iconType="square" />
+            {/* LOGIC HIỂN THỊ: NẾU CHƯA CÓ DATA THÌ HIỆN LOADING, CÓ RỒI THÌ HIỆN BIỂU ĐỒ */}
+            {chartData.length === 0 ? (
+              <div className="flex flex-col items-center justify-center h-full space-y-3">
+                <div className="relative w-10 h-10">
+                  <div className="absolute inset-0 border-2 border-emerald-100 rounded-full"></div>
+                  <div className="absolute inset-0 border-2 border-emerald-500 rounded-full border-t-transparent animate-spin"></div>
+                </div>
+                <p className="text-slate-400 text-sm font-medium animate-pulse uppercase tracking-widest">
+                  Đang đồng bộ dữ liệu thị trường...
+                </p>
+              </div>
+            ) : (
+              <ResponsiveContainer width="100%" height="100%">
+                <LineChart data={chartData} margin={{ top: 10, right: 10, left: -20, bottom: 0 }}>
+                  <CartesianGrid strokeDasharray="3 3" stroke="#cbd5e1" fill="#ffffff" />
+                  <XAxis dataKey="date" axisLine={false} tickLine={false} tick={{fill: '#111827', fontSize: 11, fontWeight: 500}} dy={10} />
+                  <YAxis axisLine={false} tickLine={false} tick={{fill: '#111827', fontSize: 11, fontWeight: 500}} tickFormatter={(val) => `${val > 0 ? '+' : ''}${val.toFixed(1)}%`} />
+                  <Tooltip contentStyle={{borderRadius: '12px', border: 'none', boxShadow: '0 10px 15px -3px rgba(0, 0, 0, 0.1)'}} formatter={(value) => [`${value.toFixed(2)}%`]} itemSorter={(item) => -item.value} />
+                  <Legend wrapperStyle={{paddingTop: '20px', fontSize: '12px', fontWeight: 600, color: '#111827'}} iconType="square" />
 
                 {/* LOGIC VẼ ĐƯỜNG DỰA TRÊN DANH SÁCH ĐÃ CHỌN */}
                 {selectedComparisons.map((ticker) => {
@@ -464,7 +585,8 @@ return (
               
               </LineChart>
             </ResponsiveContainer>
-          </div>
+            )}
+          </div>          
         </div>
           
           {/* 1. Danh mục hiện tại (Đã Fix lỗi Hydration và update Font Đen Đậm) */}
@@ -940,7 +1062,15 @@ return (
           </div>
         </div>
       )}      
-
+    {/* Thêm dòng này vào cuối file, trước </main> */}
+      <Toaster 
+        position="top-center" 
+        richColors 
+        expand={true}
+        closeButton
+        theme="light"
+      />
+      
     </main>
   );
 }

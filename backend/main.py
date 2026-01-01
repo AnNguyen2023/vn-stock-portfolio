@@ -68,6 +68,19 @@ def get_db():
     finally:
         db.close()
 
+# --- CHÈN HÀM DASHBOARD-INIT VÀO ĐÂY ---
+@app.get("/dashboard-init")
+def dashboard_init(db: Session = Depends(get_db)):
+    """
+    Siêu API gộp: Tải toàn bộ dữ liệu cần thiết cho Dashboard trong 1 lần gọi duy nhất.
+    Giúp giảm số lượng request từ trình duyệt và tăng tốc độ hiển thị.
+    """
+    return {
+        "portfolio": get_portfolio(db),
+        "logs": get_audit_log(db),
+        "performance": get_performance(db)
+    }
+
 @app.post("/deposit")
 def deposit_money(req: schemas.DepositRequest, db: Session = Depends(get_db)):
     try:
