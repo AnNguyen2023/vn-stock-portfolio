@@ -289,16 +289,90 @@ import json
 # Kết nối Redis
 redis_conn = Redis.from_url(os.getenv("REDIS_URL", "redis://redis:6379/0"))
 q = Queue(connection=redis_conn)
+#======================================================================================================
 
+# --- HÀM HELPER: TÍNH TWRR CHUẨN QUỐC TẾ ---
+def calculate_twrr_for_period(db: Session, start_date: date, end_date: date, current_nav: Decimal):
+    """
+    Tính tỷ suất sinh lời theo thời gian (TWRR)
+    Loại bỏ biến động do nộp/rút tiền.
+    """
+    # 1. Lấy tất cả Snapshots và CashFlows trong khoảng thời gian
+    snapshots = db.query(models.DailySnapshot).filter(
+        models.DailySnapshot.date >= start_date,
+        models.DailySnapshot.date < end_date
+    ).order_by(models.DailySnapshot.date.asc()).all()
+    
+    # Chuyển snapshot thành dictionary để truy xuất nhanh: {date: nav}
+    snap_map = {s.date: s.total_nav for s in snapshots}
+
+    # 2. Lấy toàn bộ dòng tiền trong khoảng thời gian
+    cash_flows = db.query(models.CashFlow).filter(
+        cast(models.CashFlow.created_at, Date) >= start_date,
+        cast(models.CashFlow.created_at, Date) <= end_date
+    ).all()
+
+    # Nhóm dòng tiền theo ngày: {date: net_flow}
+    flow_map = {}
+    for f in cash_flows:
+        d = f.created_at.date()
+        # Net Flow = (Nộp + Lãi) - Rút
+        is_inflow = f.type in [models.CashFlowType.DEPOSIT, models.CashFlowType.INTEREST, models.CashFlowType.DIVIDEND_CASH]
+        amount = f.amount if is_inflow else -f.amount
+        flow_map[d] = flow_map.get(d, Decimal("0")) + amount
+
+    # 3. Chạy vòng lặp qua từng ngày để tính toán lãi gộp
+    cumulative_factor = Decimal("1.0")
+    last_nav = None
+    
+    # Tìm NAV bắt đầu (trước ngày start_date 1 ngày) để làm mốc khởi điểm
+    start_point_snap = db.query(models.DailySnapshot).filter(
+        models.DailySnapshot.date < start_date
+    ).order_by(models.DailySnapshot.date.desc()).first()
+    
+    last_nav = start_point_snap.total_nav if start_point_snap else Decimal("0")
+
+    curr_d = start_date
+    while curr_d <= end_date:
+        # NAV cuối ngày (Nếu là hôm nay thì dùng current_nav thực tế, nếu không lấy từ DB)
+        nav_t = current_nav if curr_d == date.today() else snap_map.get(curr_d, last_nav)
+        
+        # Dòng tiền trong ngày t
+        f_t = flow_map.get(curr_d, Decimal("0"))
+        
+        # --- CÔNG THỨC TWRR ---
+        # PnL_t = NAV_t - NAV_prev - NetFlow_t
+        pnl_t = nav_t - last_nav - f_t
+        
+        # Mẫu số (Vốn rủi ro) = NAV_prev + Max(0, NetFlow_t)
+        denominator = last_nav + max(Decimal("0"), f_t)
+        
+        # Tỷ suất ngày r_t
+        if denominator > 0:
+            r_t = pnl_t / denominator
+            cumulative_factor *= (Decimal("1.0") + r_t)
+        
+        # Cập nhật mốc cho ngày tiếp theo
+        last_nav = nav_t
+        curr_d += timedelta(days=1)
+
+    # Lãi tổng kết = (Hệ số nhân dồn - 1) * 100
+    final_pct = (cumulative_factor - Decimal("1.0")) * 100
+    # Lãi trị tuyệt đối (Số tiền lãi thực tế không tính nộp rút)
+    final_val = (cumulative_factor - Decimal("1.0")) * last_nav if last_nav > 0 else Decimal("0")
+    
+    return float(final_val), float(final_pct)
+
+# --- API PERFORMANCE CẬP NHẬT ---
 @app.get("/performance")
 def get_performance(db: Session = Depends(get_db)):
-    # 1. THỬ LẤY TỪ CACHE REDIS
-    cache_key = "dashboard_performance"
-    cached_data = redis_conn.get(cache_key)
-    if cached_data:
-        return json.loads(cached_data)
+    # 1. KIỂM TRA CACHE REDIS (30 giây thay vì 5 phút để số liệu nhảy nhạy hơn)
+    cache_key = "dashboard_performance_twrr"
+    cached = redis_conn.get(cache_key)
+    if cached:
+        return json.loads(cached)
 
-    # 2. NẾU KHÔNG CÓ TRONG CACHE -> TÍNH TOÁN (Logic cũ của bạn)
+    # 2. TÍNH TOÁN NAV HIỆN TẠI (REAL-TIME)
     asset = db.query(models.AssetSummary).first()
     if not asset: return {}
     
@@ -307,32 +381,40 @@ def get_performance(db: Session = Depends(get_db)):
     curr_stock_val = sum((Decimal(str(prices.get(h.ticker, 0))) or h.average_price) * h.total_volume for h in holdings)
     curr_nav = asset.cash_balance + curr_stock_val
 
-    def calc_pct(days_ago=None, ytd=False):
-        target = date(date.today().year, 1, 1) if ytd else (date.today() - timedelta(days=days_ago))
-        snap = db.query(models.DailySnapshot).filter(models.DailySnapshot.date <= target).order_by(desc(models.DailySnapshot.date)).first()
-        old_nav = snap.total_nav if snap else Decimal("0")
-        flows = db.query(models.CashFlow).filter(cast(models.CashFlow.created_at, Date) >= target).all()
-        net_flow = sum((f.amount if f.type == models.CashFlowType.DEPOSIT else -f.amount) for f in flows if f.type in [models.CashFlowType.DEPOSIT, models.CashFlowType.WITHDRAW])
-        profit = curr_nav - (old_nav + net_flow)
-        denom = old_nav + net_flow
-        return float(profit), float((profit / denom * 100) if denom > 0 else 0)
+    # 3. TÍNH TWRR CHO CÁC MỐC THỜI GIAN
+    today = date.today()
+    
+    # 1 Ngày (So với cuối ngày hôm qua)
+    v1d, p1d = calculate_twrr_for_period(db, today, today, curr_nav)
+    
+    # 1 Tháng
+    v1m, p1m = calculate_twrr_for_period(db, today - timedelta(days=30), today, curr_nav)
+    
+    # 1 Năm
+    v1y, p1y = calculate_twrr_for_period(db, today - timedelta(days=365), today, curr_nav)
+    
+    # YTD (Đầu năm đến nay)
+    vytd, pytd = calculate_twrr_for_period(db, date(today.year, 1, 1), today, curr_nav)
 
     result = {
-        "1d": {"val": calc_pct(days_ago=1)[0], "pct": calc_pct(days_ago=1)[1]},
-        "1m": {"val": calc_pct(days_ago=30)[0], "pct": calc_pct(days_ago=30)[1]},
-        "1y": {"val": calc_pct(days_ago=365)[0], "pct": calc_pct(days_ago=365)[1]},
-        "ytd": {"val": calc_pct(ytd=True)[0], "pct": calc_pct(ytd=True)[1]}
+        "1d": {"val": v1d, "pct": p1d},
+        "1m": {"val": v1m, "pct": p1m},
+        "1y": {"val": v1y, "pct": p1y},
+        "ytd": {"val": vytd, "pct": pytd}
     }
 
-    # 3. LƯU VÀO REDIS TRONG 5 PHÚT (300 giây)
-    redis_conn.setex(cache_key, 300, json.dumps(result))
+    # 4. LƯU CACHE VÀ CHỐT SỔ NGẦM
+    redis_conn.setex(cache_key, 30, json.dumps(result))
     
-    # 4. ĐẨY NHIỆM VỤ CHỐT SỔ NGẦM CHO WORKER (Dùng RQ)
     from tasks import update_daily_snapshot_task
     q.enqueue(update_daily_snapshot_task)
 
-    return result
+    return result    
 
+#======================================================================================================
+
+
+@app.get("/performance")
 @app.get("/historical")
 def get_historical(ticker: str, period: str = "1m"):
     return {"status": "success", "data": crawler.get_historical_prices(ticker, period)}
@@ -341,6 +423,51 @@ def get_historical(ticker: str, period: str = "1m"):
 def get_history_summary(start_date: str, end_date: str, db: Session = Depends(get_db)):
     items = db.query(models.RealizedProfit).filter(cast(models.RealizedProfit.sell_date, Date) >= datetime.strptime(start_date, "%Y-%m-%d").date(), cast(models.RealizedProfit.sell_date, Date) <= datetime.strptime(end_date, "%Y-%m-%d").date()).all()
     return {"total_profit": float(sum(i.net_profit for i in items)), "trade_count": len(items)}
+
+@app.get("/nav-history")
+def get_nav_history(db: Session = Depends(get_db), limit: int = 10):
+    """
+    Lấy lịch sử biến động NAV từng ngày.
+    Tính toán biến động thực tế = NAV(t) - NAV(t-1) - NetFlow(t)
+    """
+    # 1. Lấy danh sách Snapshot (mốc tài sản cuối ngày)
+    snapshots = db.query(models.DailySnapshot).order_by(models.DailySnapshot.date.desc()).limit(limit + 1).all()
+    # Đảo ngược lại để tính từ cũ đến mới
+    snapshots = snapshots[::-1]
+
+    history = []
+    
+    for i in range(1, len(snapshots)):
+        prev_snap = snapshots[i-1]
+        curr_snap = snapshots[i]
+        
+        # 2. Tính Net Flow (Nộp - Rút) trong ngày curr_snap.date
+        flows = db.query(models.CashFlow).filter(
+            cast(models.CashFlow.created_at, Date) == curr_snap.date
+        ).all()
+        
+        net_flow = sum(
+            (f.amount if f.type in [models.CashFlowType.DEPOSIT, models.CashFlowType.INTEREST] else -f.amount)
+            for f in flows if f.type in [models.CashFlowType.DEPOSIT, models.CashFlowType.WITHDRAW]
+        )
+
+        # 3. CÔNG THỨC QUAN TRỌNG: Lãi/Lỗ do thị trường trong ngày
+        # Market_PnL = Tài sản cuối ngày - Tài sản đầu ngày - Tiền nộp rút trong ngày
+        market_pnl = curr_snap.total_nav - prev_snap.total_nav - net_flow
+        
+        # Tính % biến động
+        denominator = prev_snap.total_nav + max(Decimal("0"), net_flow)
+        pnl_pct = (market_pnl / denominator * 100) if denominator > 0 else 0
+
+        history.append({
+            "date": curr_snap.date.strftime("%d/%m/%Y"),
+            "nav": float(curr_snap.total_nav),
+            "change": float(market_pnl),
+            "pct": float(pnl_pct)
+        })
+
+    # Trả về danh sách mới nhất lên đầu
+    return history[::-1]
 
 @app.post("/reset-data")
 def reset_data(db: Session = Depends(get_db)):

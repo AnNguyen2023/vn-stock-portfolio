@@ -27,9 +27,13 @@ services:
     restart: always
     ports:
       - "8000:8000"
+    volumes:
+      - ./backend:/app             # Đồng bộ code: Sửa file ở Mac, Backend tự reload
     environment:
       - DATABASE_URL=postgresql://admin:2026@db:5432/vn_stock
       - REDIS_URL=redis://redis:6379/0
+    # Lệnh chạy có thêm --reload để tự nhận diện file thay đổi
+    command: uvicorn main:app --host 0.0.0.0 --port 8000 --reload
     depends_on:
       - db
       - redis
@@ -39,6 +43,8 @@ services:
     build: ./backend
     container_name: invest_worker
     restart: always
+    volumes:
+      - ./backend:/app             # Đồng bộ code để worker luôn dùng logic mới nhất
     command: rq worker --url redis://redis:6379/0
     environment:
       - DATABASE_URL=postgresql://admin:2026@db:5432/vn_stock
@@ -53,8 +59,15 @@ services:
     restart: always
     ports:
       - "3000:3000"
+    volumes:
+      - ./frontend:/app           # Quan trọng: Đồng bộ code Frontend
+      - /app/node_modules        # Giữ lại node_modules bên trong container (tránh lỗi chip M3)
+      - /app/.next               # Giữ thư mục build bên trong container
     environment:
       - NEXT_PUBLIC_API_URL=http://localhost:8000
+      - WATCHPACK_POLLING=true    # Ép Next.js quét file thay đổi liên tục trên Docker Mac
+    # Chuyển sang lệnh dev để có Hot Reload
+    command: npm run dev
     depends_on:
       - backend
 

@@ -61,6 +61,7 @@ export default function Dashboard() {
       setShowUndoConfirm(true);
   };
 
+
   // Hàm này thực hiện việc Undo thật sự sau khi người dùng nhấn "Xác nhận" trên Modal
   const confirmUndo = async () => {
       setShowUndoConfirm(false); // Đóng modal ngay
@@ -82,6 +83,7 @@ export default function Dashboard() {
 
   // History Tab State
   const [activeHistoryTab, setActiveHistoryTab] = useState('allocation'); // 'performance' | 'orders' | 'cashflow'
+
   
   // Date Filters
   const [startDate, setStartDate] = useState('');
@@ -109,6 +111,9 @@ export default function Dashboard() {
   const [description, setDescription] = useState('');
   const [buyForm, setBuyForm] = useState({ ticker: '', volume: '', price: '', fee_rate: 0.0015 });
   const [sellForm, setSellForm] = useState({ ticker: '', volume: '', price: '', available: 0 });
+
+  // 1. Thêm state mới (đặt cùng nhóm với các useState khác)
+  const [navHistory, setNavHistory] = useState([]);
 
   // --- 1. LOGIC PRIVACY: Tự động che lại sau 5 phút ---
   useEffect(() => {
@@ -198,38 +203,32 @@ const normalizeData = (responses, tickers) => {
     }
   };
 
-   
-  const fetchAllData = async () => {
+  // 2. Sửa lại hàm fetchAllData để lấy thêm lịch sử NAV
+const fetchAllData = async () => {
     try {
-      // Bọc toàn bộ vào try để nếu getPortfolio lỗi mạng, nó sẽ nhảy vào catch
       const resP = await getPortfolio();
-      
       if (resP?.data) {
         setData(resP.data);
         setLoading(false); 
       }
 
-      // Các hàm chạy sau không cần await để tăng tốc
-      getAuditLog().then(res => res?.data && setLogs(res.data)).catch(() => {});
-      getPerformance().then(res => res?.data && setPerf(res.data)).catch(() => {});
+      getAuditLog().then(res => res?.data && setLogs(res.data));
+      getPerformance().then(res => res?.data && setPerf(res.data));
+      
+      // GỌI THÊM API BIẾN ĐỘNG NAV
+      getNavHistory(20).then(res => {
+        if(res?.data) setNavHistory(res.data);
+      });
 
     } catch (error) {
-      // Khi có lỗi mạng, setLoading(false) để thoát màn hình chờ
       setLoading(false);
-      console.error("Lỗi kết nối Backend:", error);
-      // Thông báo Toast đỏ sẽ được Interceptor ở api.js tự động bắn ra
     }
-  };
+  }; 
+  
 
   useEffect(() => {
     fetchAllData();
     // Tự động làm mới mỗi 30 giây (không hiện loading lần nữa)
-    const interval = setInterval(fetchAllData, 30000);
-    return () => clearInterval(interval);
-  }, []);
-
-  useEffect(() => {
-    fetchAllData();
     const interval = setInterval(fetchAllData, 30000);
     return () => clearInterval(interval);
   }, []);
@@ -759,264 +758,267 @@ return (
                   </div>
             </div>
                    
-          
-          {/* --- NHẬT KÝ DỮ LIỆU (Đã đưa Cơ cấu danh mục lên đầu) --- */}
-        <div className="bg-white rounded-xl shadow-xl border border-emerald-100 overflow-hidden relative z-10 mb-10">
-              {/* HEADER NHẬT KÝ: Đã chỉnh nút & ngày tháng TO HƠN, RÕ HƠN */}
-              <div className="p-4 bg-emerald-100 border-b border-emerald-100 flex flex-col md:flex-row justify-between md:items-center gap-4">
-                  <h2 className="text-emerald-900 text-lg font-medium tracking-tight flex items-center gap-2 uppercase">
-                    <Book size={20} className="text-emerald-600"/> Nhật Ký Dữ Liệu
-                  </h2>
-                  
-                  <div className="flex flex-wrap gap-3 items-center">
-                      {/* Ô Ngày bắt đầu: To hơn (py-2.5), Chữ đậm (font-bold text-sm) */}
-                      <div className="relative">
-                        <Calendar className="absolute left-3 top-1/2 -translate-y-1/2 text-emerald-600" size={18} />
-                        <input 
-                            type="date"
-                            id="start_date" // Thêm dòng này
-                            name="start_date" // Thêm dòng này 
-                            value={startDate} 
-                            onChange={(e) => setStartDate(e.target.value)} 
-                            className="pl-10 pr-4 py-2.5 bg-white border border-emerald-200 rounded-xl text-sm font-bold focus:ring-2 focus:ring-emerald-500 outline-none text-emerald-800 shadow-sm cursor-pointer" 
-                        />
-                      </div>
-                      
-                      <span className="text-emerald-400 font-bold self-center text-lg">-</span>
-                      
-                      {/* Ô Ngày kết thúc: Tương tự */}
-                      <div className="relative">
-                        <Calendar className="absolute left-3 top-1/2 -translate-y-1/2 text-emerald-600" size={18} />
-                        <input 
-                            type="date"
-                            id="end_date" // Thêm dòng này
-                            name="end_date" // Thêm dòng này 
-                            value={endDate} 
-                            onChange={(e) => setEndDate(e.target.value)} 
-                            className="pl-10 pr-4 py-2.5 bg-white border border-emerald-200 rounded-xl text-sm font-bold focus:ring-2 focus:ring-emerald-500 outline-none text-emerald-800 shadow-sm cursor-pointer" 
-                        />
-                      </div>
-                      
-                      {/* Nút Kiểm tra: To hơn, nổi bật hơn */}
-                      <button 
-                        onClick={handleCalculateProfit} 
-                        className="px-6 py-2.5 bg-emerald-500 hover:bg-emerald-600 text-white text-sm font-bold rounded-xl shadow-md shadow-emerald-200 active:scale-95 transition"
-                      >
-                        Kiểm tra
-                      </button>
-                  </div>
+          {/* --- NHẬT KÝ DỮ LIỆU (BẢN HOÀN CHỈNH: 4 TABS - PERFORMANCE 2 CỘT) --- */}
+          <div className="bg-white rounded-2xl shadow-xl border border-slate-200 overflow-hidden relative z-10 mb-10">
+            
+            {/* HEADER NHẬT KÝ & BỘ LỌC NGÀY */}
+            <div className="p-5 bg-white border-b border-slate-100 flex flex-col md:flex-row justify-between md:items-center gap-4">
+              <div className="flex items-center gap-3">
+                <div className="p-2 bg-emerald-50 text-emerald-600 rounded-lg">
+                  <Book size={22} />
+                </div>
+                <h2 className="text-slate-800 text-lg font-extrabold uppercase tracking-tight">
+                  Nhật Ký Dữ Liệu
+                </h2>
               </div>
-
-              {/* TAB NAVIGATION: Đã đưa Cơ cấu danh mục lên đầu */}
-              <div className="bg-white border-b border-emerald-50 px-4 pt-4">
-                  <div className="flex gap-8 overflow-x-auto">
-                      
-                      {/* Tab 1: Cơ cấu danh mục (ĐÃ CHUYỂN LÊN ĐẦU) */}
-                      <button 
-                        onClick={() => setActiveHistoryTab('allocation')} 
-                        className={`pb-3 text-base font-medium border-b-2 transition whitespace-nowrap ${
-                          activeHistoryTab === 'allocation' 
-                            ? 'border-emerald-600 text-gray-900' 
-                            : 'border-transparent text-gray-500 hover:text-emerald-600'
-                        }`}
-                      >
-                        <span className="flex items-center gap-2"><PieChartIcon size={18}/> Cơ cấu danh mục</span>
-                      </button>
-
-                      {/* Tab 2: Nhật ký Lãi/Lỗ */}
-                      <button 
-                        onClick={() => setActiveHistoryTab('performance')} 
-                        className={`pb-3 text-base font-medium border-b-2 transition whitespace-nowrap ${
-                          activeHistoryTab === 'performance' 
-                            ? 'border-emerald-600 text-gray-900' 
-                            : 'border-transparent text-gray-500 hover:text-emerald-600'
-                        }`}
-                      >
-                        <span className="flex items-center gap-2"><Activity size={18}/> Nhật ký Lãi/Lỗ</span>
-                      </button>
-
-                      {/* Tab 3: Nhật ký Khớp lệnh */}
-                      <button 
-                        onClick={() => setActiveHistoryTab('orders')} 
-                        className={`pb-3 text-base font-medium border-b-2 transition whitespace-nowrap ${
-                          activeHistoryTab === 'orders' 
-                            ? 'border-emerald-600 text-gray-900' 
-                            : 'border-transparent text-gray-500 hover:text-emerald-600'
-                        }`}
-                      >
-                        <span className="flex items-center gap-2"><List size={18}/> Nhật ký Khớp lệnh</span>
-                      </button>
-
-                      {/* Tab 4: Nhật ký Dòng tiền */}
-                      <button 
-                        onClick={() => setActiveHistoryTab('cashflow')} 
-                        className={`pb-3 text-base font-medium border-b-2 transition whitespace-nowrap ${
-                          activeHistoryTab === 'cashflow' 
-                            ? 'border-emerald-600 text-gray-900' 
-                            : 'border-transparent text-gray-500 hover:text-emerald-600'
-                        }`}
-                      >
-                        <span className="flex items-center gap-2"><Wallet size={18}/> Nhật ký Dòng tiền</span>
-                      </button>
-                  </div>
+              
+              <div className="flex flex-wrap gap-3 items-center">
+                <div className="relative">
+                  <Calendar className="absolute left-3 top-1/2 -translate-y-1/2 text-slate-400" size={16} />
+                  <input 
+                    type="date" 
+                    id="start_date"
+                    name="start_date"
+                    value={startDate} 
+                    onChange={(e) => setStartDate(e.target.value)} 
+                    className="pl-10 pr-4 py-2 bg-slate-50 border border-slate-200 rounded-xl text-sm font-bold focus:ring-2 focus:ring-emerald-500 outline-none text-slate-700 shadow-sm cursor-pointer" 
+                  />
+                </div>
+                
+                <span className="text-slate-300 font-bold self-center">−</span>
+                
+                <div className="relative">
+                  <Calendar className="absolute left-3 top-1/2 -translate-y-1/2 text-slate-400" size={16} />
+                  <input 
+                    type="date" 
+                    id="end_date"
+                    name="end_date"
+                    value={endDate} 
+                    onChange={(e) => setEndDate(e.target.value)} 
+                    className="pl-10 pr-4 py-2 bg-slate-50 border border-slate-200 rounded-xl text-sm font-bold focus:ring-2 focus:ring-emerald-500 outline-none text-slate-700 shadow-sm cursor-pointer" 
+                  />
+                </div>
+                
+                <button 
+                  onClick={handleCalculateProfit} 
+                  className="px-6 py-2 bg-emerald-500 hover:bg-emerald-600 text-white text-sm font-bold rounded-xl shadow-md shadow-emerald-100 active:scale-95 transition"
+                >
+                  Kiểm tra
+                </button>
               </div>
-
-              <div className="p-6 min-h-[400px] bg-slate-50/30">
-                                                   
-                  {/* --- 1. NỘI DUNG TAB: CƠ CẤU DANH MỤC (Mặc định) --- */}
-                  {activeHistoryTab === 'allocation' && (
-                      <div className="animate-in fade-in zoom-in duration-300 min-h-[400px] flex items-center justify-center relative">
-                        {(!data?.holdings || data.holdings.length === 0) ? (
-                           <div className="text-slate-400 italic">Chưa có cổ phiếu nào trong danh mục.</div>
-                        ) : (
-                          <div className="w-full h-[400px] relative">
-                            <div className="absolute inset-0 flex flex-col items-center justify-center pointer-events-none z-0">
-                                <p className="text-xs text-slate-400 font-bold uppercase tracking-widest mb-1">Tổng giá trị</p>
-                                <p className="text-xl font-bold text-slate-800">
-                                  {Math.floor(data?.total_stock_value || 0).toLocaleString()} <span className="text-xs text-slate-400">VNĐ</span>
-                                </p>
-                            </div>
-
-                            <ResponsiveContainer width="100%" height="100%">
-                              <PieChart>
-                                <Pie
-                                  data={data.holdings}
-                                  cx="50%"
-                                  cy="50%"
-                                  innerRadius={100}
-                                  outerRadius={140}
-                                  paddingAngle={2}
-                                  dataKey="current_value"
-                                  nameKey="ticker"
-                                  label={({ cx, cy, midAngle, innerRadius, outerRadius, percent, index, name }) => {
-                                    const RADIAN = Math.PI / 180;
-                                    const radius = innerRadius + (outerRadius - innerRadius) * 0.5;
-                                    const x = cx + (outerRadius + 30) * Math.cos(-midAngle * RADIAN);
-                                    const y = cy + (outerRadius + 30) * Math.sin(-midAngle * RADIAN);
-                                    
-                                    return (
-                                      <text x={x} y={y} fill="#374151" textAnchor={x > cx ? 'start' : 'end'} dominantBaseline="central" className="text-xs font-bold">
-                                        {`${name} (${(percent * 100).toFixed(1)}%)`}
-                                      </text>
-                                    );
-                                  }}
-                                >
-                                  {data.holdings.map((entry, index) => (
-                                    <Cell key={`cell-${index}`} fill={PIE_COLORS[index % PIE_COLORS.length]} stroke="white" strokeWidth={2} />
-                                  ))}
-                                </Pie>
-                                <Tooltip formatter={(value) => `${Math.floor(value).toLocaleString()} VNĐ`} contentStyle={{borderRadius: '12px', border: 'none', boxShadow: '0 10px 15px -3px rgba(0, 0, 0, 0.1)'}}/>
-                              </PieChart>
-                            </ResponsiveContainer>
-                          </div>
-                        )}
-                      </div>
-                  )}
-
-                  {/* --- 2. NỘI DUNG TAB: HIỆU SUẤT (Cập nhật font to) --- */}
-                  {activeHistoryTab === 'performance' && (
-                      <div className="animate-in fade-in zoom-in duration-300">
-                            {!historicalProfit ? (
-                              <div className="text-center text-slate-400 italic mt-10">Vui lòng chọn ngày và bấm "Kiểm tra".</div>
-                            ) : (
-                              <div className="bg-gradient-to-br from-white to-emerald-50 p-8 rounded-xl border border-emerald-100 shadow-sm flex flex-col md:flex-row items-center justify-between gap-6">
-                                  <div>
-                                      <p className="text-xs text-emerald-600 font-bold uppercase mb-2 tracking-widest">Tổng Lãi/Lỗ Ròng</p>
-                                      <p className={`text-4xl font-bold tracking-tighter ${historicalProfit.total_profit >= 0 ? 'text-emerald-600' : 'text-rose-600'}`}>
-                                      {historicalProfit.total_profit >= 0 ? '+' : ''}{Math.floor(historicalProfit.total_profit).toLocaleString()} <span className="text-lg font-bold text-slate-400">₫</span>
-                                      </p>
-                                  </div>
-                                  <div className="bg-white p-4 rounded-lg border border-emerald-100 text-center min-w-[120px]">
-                                      <p className="text-xs text-slate-400 font-bold uppercase mb-1">Số lệnh</p>
-                                      <p className="text-2xl font-bold text-emerald-900">{historicalProfit.trade_count}</p>
-                                  </div>
-                              </div>
-                            )}
-                      </div>
-                  )}
-
-                  {/* --- 3. NỘI DUNG TAB: KHỚP LỆNH (Đã chỉnh font to text-sm & rõ hơn) --- */}
-                  {activeHistoryTab === 'orders' && (
-                      <div className="animate-in fade-in zoom-in duration-300">
-                          <div className="overflow-hidden rounded-xl border border-emerald-100 shadow-sm bg-white">
-                              <table className="w-full text-left">
-                                  {/* Header giữ nguyên format chuẩn (màu xanh, text-xs, uppercase) */}
-                                  <thead className="bg-emerald-50/40 text-emerald-700 text-xs uppercase font-medium tracking-wider border-b border-emerald-200">
-                                      <tr><th className="p-4">Ngày</th><th className="p-4">Lệnh</th><th className="p-4">Chi tiết</th></tr>
-                                  </thead>
-                                  
-                                  <tbody className="divide-y divide-emerald-100">
-                                      {logs.filter(l => l.category === 'STOCK').map((log, i) => (
-                                          // THAY ĐỔI LỚN Ở ĐÂY: text-xs -> text-sm
-                                          <tr key={i} className="text-sm hover:bg-emerald-50 transition text-slate-600">
-                                              
-                                              {/* 1. Ngày: In đậm (font-bold) */}
-                                              <td className="p-4 font-bold text-slate-500">{new Date(log.date).toLocaleDateString('vi-VN')}</td>
-                                              
-                                              {/* 2. Loại lệnh: In đậm (font-bold) & Màu sắc rõ ràng */}
-                                              <td className={`p-4 font-bold ${log.type === 'BUY' ? 'text-emerald-600' : 'text-rose-500'}`}>{log.type}</td>
-                                              
-                                              {/* 3. Chi tiết: Chữ thường, màu đậm */}
-                                              <td className="p-4 font-medium text-slate-700">{log.content}</td>
-                                          </tr>
-                                      ))}
-                                  </tbody>
-                              </table>
-                          </div>
-                      </div>
-                  )}
-
-                  {/* --- 4. NỘI DUNG TAB: DÒNG TIỀN (Đã chỉnh font to & rõ hơn) --- */}
-                  {activeHistoryTab === 'cashflow' && (
-                      <div className="animate-in fade-in zoom-in duration-300 max-w-3xl mx-auto">
-                        <div className="mb-6 p-4 bg-emerald-50 rounded-xl border border-emerald-100 flex items-center justify-between shadow-sm">
-                          <div>
-                             <p className="text-xs text-emerald-600 font-bold uppercase mb-1 tracking-widest">Tiền mặt thực có</p>
-                             <h3 className="text-2xl font-bold text-slate-800 tracking-tight">
-                               {Math.floor(data?.cash_balance || 0).toLocaleString()} <span className="text-sm font-medium text-slate-400">vnd</span>
-                             </h3>
-                          </div>
-                          <div className="p-3 bg-white rounded-lg text-emerald-500 shadow-sm"><Wallet size={24} /></div>
-                        </div>
-                        <div className="space-y-4">
-                            {logs.filter(l => l.category === 'CASH').length > 0 ? (
-                              logs.filter(l => l.category === 'CASH').map((log, idx) => {
-                                const isPositive = ['DEPOSIT', 'INTEREST', 'DIVIDEND_CASH'].includes(log.type);
-                                const colorClass = isPositive ? 'bg-emerald-500' : 'bg-purple-500';
-                                const textClass = isPositive ? 'text-emerald-700' : 'text-purple-700';
-                                const bgClass = isPositive ? 'bg-emerald-50' : 'bg-purple-50';
-
-                                return (
-                                  <div key={idx} className="flex gap-4 items-start group">
-                                    {/* 1. NGÀY THÁNG: To hơn (text-sm) */}
-                                    <div className="min-w-[60px] text-right pt-2">
-                                        <p className="text-sm font-bold text-slate-500">{new Date(log.date).toLocaleDateString('vi-VN', {day: '2-digit', month: '2-digit'})}</p>
-                                    </div>
-                                    
-                                    <div className="relative flex flex-col items-center self-stretch"><div className={`w-3 h-3 rounded-full mt-2 ${colorClass} z-10 ring-4 ring-white`}></div><div className="w-0.5 bg-slate-100 flex-1 -mt-1 group-last:hidden"></div></div>
-                                    
-                                    <div className={`flex-1 p-3 rounded-xl border border-slate-100 shadow-sm hover:shadow-md transition ${bgClass}`}>
-                                       {/* 2. LOẠI LỆNH: To hơn (text-xs) */}
-                                       <div className="flex justify-between items-start mb-1">
-                                            <span className={`text-xs font-bold px-2 py-0.5 rounded-md bg-white/80 ${textClass}`}>{log.type}</span>
-                                       </div>
-                                       
-                                       {/* 3. NỘI DUNG: To hơn (text-sm) & In đậm (font-bold) */}
-                                       <p className="text-sm font-bold text-slate-700">{log.content}</p>
-                                    </div>
-                                  </div>
-                                );
-                              })
-                            ) : (<div className="text-center p-10 text-slate-400 italic">Chưa có giao dịch tiền mặt.</div>)}
-                        </div>
-                      </div>
-                  )}
             </div>
+
+            {/* TAB NAVIGATION: 4 MỤC CHUẨN CHỈNH */}
+            <div className="bg-white border-b border-slate-100 px-6 pt-4">
+              <div className="flex gap-10 overflow-x-auto no-scrollbar">
+                {[
+                  { id: 'allocation', label: 'Cơ cấu danh mục', icon: <PieChartIcon size={18}/> },
+                  { id: 'performance', label: 'Nhật ký Lãi/Lỗ', icon: <Activity size={18}/> },
+                  { id: 'orders', label: 'Nhật ký Khớp lệnh', icon: <List size={18}/> },
+                  { id: 'cashflow', label: 'Nhật ký Dòng tiền', icon: <Wallet size={18}/> }
+                ].map((tab) => (
+                  <button 
+                    key={tab.id}
+                    onClick={() => setActiveHistoryTab(tab.id)} 
+                    className={`pb-3 text-sm font-bold border-b-2 transition-all whitespace-nowrap flex items-center gap-2 ${
+                      activeHistoryTab === tab.id 
+                        ? 'border-emerald-600 text-slate-900' 
+                        : 'border-transparent text-slate-400 hover:text-emerald-600'
+                    }`}
+                  >
+                    {tab.icon} {tab.label}
+                  </button>
+                ))}
+              </div>
+            </div>
+
+            <div className="p-6 min-h-[450px] bg-slate-50/30">
+              
+                {/* --- 1. TAB: CƠ CẤU DANH MỤC --- */}
+              {activeHistoryTab === 'allocation' && (
+                <div className="animate-in fade-in zoom-in duration-300 flex items-center justify-center relative h-[400px]">
+                  {(!data?.holdings || data.holdings.length === 0) ? (
+                    <div className="text-slate-400 italic">Chưa có dữ liệu phân bổ cổ phiếu.</div>
+                  ) : (
+                    <div className="w-full h-full relative">
+                      <div className="absolute inset-0 flex flex-col items-center justify-center pointer-events-none z-0">
+                        <p className="text-[10px] text-slate-400 font-bold uppercase tracking-[0.2em] mb-1">Giá trị cổ phiếu</p>
+                        <p className="text-2xl font-black text-slate-800 tracking-tighter">
+                          {Math.floor(data?.total_stock_value || 0).toLocaleString('en-US')} <span className="text-xs font-bold text-slate-400 uppercase">vnd</span>
+                        </p>
+                      </div>
+                      <ResponsiveContainer width="100%" height="100%">
+                        <PieChart>
+                          <Pie
+                            data={data.holdings} cx="50%" cy="50%" innerRadius={100} outerRadius={140} paddingAngle={3} dataKey="current_value" nameKey="ticker"
+                            label={({ name, percent }) => `${name} (${(percent * 100).toFixed(1)}%)`}
+                          >
+                            {data.holdings.map((entry, index) => (
+                              <Cell key={`cell-${index}`} fill={PIE_COLORS[index % PIE_COLORS.length]} stroke="#fff" strokeWidth={3} />
+                            ))}
+                          </Pie>
+                          <Tooltip formatter={(val) => `${Math.floor(val).toLocaleString()} vnd`} />
+                        </PieChart>
+                      </ResponsiveContainer>
+                    </div>
+                  )}
+                </div>
+              )}
+
+              {/* --- 2. TAB: NHẬT KÝ LÃI/LỖ (BẢN TĂNG NÉT: CHỮ 14PX/16PX, XÁM ĐẬM) --- */}
+              {activeHistoryTab === 'performance' && (
+                <div className="animate-in fade-in zoom-in duration-500">
+                  <div className="grid grid-cols-1 lg:grid-cols-12 gap-6 items-start">
+                    
+                    {/* BÊN TRÁI: Lãi chốt thực nhận */}
+                    <div className="lg:col-span-5 space-y-4">
+                      <div className="flex items-center gap-2 mb-2 ml-1">
+                          <div className="w-1 h-4 bg-emerald-500 rounded-full"></div>
+                            <h3 className="text-slate-700 text-[15px] font-bold uppercase tracking-wider">Lợi nhuận chốt sổ</h3>
+                      </div>
+
+                      
+                      {!historicalProfit ? (
+                        <div className="bg-white p-10 rounded-2xl border border-slate-100 flex flex-col items-center justify-center text-center shadow-sm min-h-[280px]">
+                          <div className="w-12 h-12 bg-slate-50 rounded-full flex items-center justify-center text-slate-300 mb-4">
+                            <Calendar size={22} />
+                          </div>
+                          <p className="text-slate-500 text-sm font-medium leading-relaxed">
+                            Vui lòng chọn khoảng ngày phía trên<br/>
+                            và nhấn <span className="text-emerald-600 font-bold">"Kiểm tra"</span> để đối soát.
+                          </p>
+                        </div>
+                      ) : (
+                        <div className="bg-white p-6 rounded-2xl border border-emerald-100 shadow-sm relative overflow-hidden">
+                          <p className="text-[11px] text-emerald-600 font-bold uppercase mb-1 tracking-widest opacity-80">Tổng lãi/lỗ ròng</p>
+                          <p className={`text-3xl font-bold tracking-tighter ${historicalProfit.total_profit >= 0 ? 'text-emerald-600' : 'text-rose-600'}`}>
+                            {historicalProfit.total_profit >= 0 ? '+' : ''}{Math.floor(historicalProfit.total_profit).toLocaleString('en-US')} 
+                            <span className="text-sm font-medium text-slate-400 ml-1.5 uppercase">vnd</span>
+                          </p>
+                          <div className="mt-8 pt-4 border-t border-slate-50 flex justify-between items-center text-[12px]">
+                            <span className="text-slate-400 font-medium uppercase">Số lệnh đã chốt</span>
+                            <span className="font-bold text-slate-700">{historicalProfit.trade_count} lệnh</span>
+                          </div>
+                        </div>
+                      )}
+                    </div>
+
+                    {/* BÊN PHẢI: Biến động tài sản theo thị trường */}
+                    <div className="lg:col-span-7 space-y-5">
+                      {/* Tiêu đề mục: 14px, Xám đậm */}
+                      <h3 className="text-slate-700 text-[16px] font-black uppercase tracking-[0.2em] mb-6 border-l-4 border-blue-500 pl-4">NHẬT KÝ TÀI SẢN (NAV)</h3>
+                      
+                      <div className="bg-white rounded-3xl border-2 border-slate-100 shadow-xl overflow-hidden min-h-[350px]">
+                        <div className="max-h-[450px] overflow-y-auto custom-scrollbar h-full flex flex-col">
+                          {navHistory && navHistory.length > 0 ? (
+                            <table className="w-full text-left border-collapse">
+                              <thead className="sticky top-0 bg-slate-50 text-slate-500 text-[11px] uppercase font-bold tracking-widest border-b-2 border-slate-100 z-10">
+                                <tr>
+                                  <th className="p-5 pl-8">Ngày</th>
+                                  <th className="p-5 text-right">Tổng tài sản</th>
+                                  <th className="p-5 text-right pr-8">Biến động</th>
+                                </tr>
+                              </thead>
+                              <tbody className="divide-y divide-slate-100">
+                                {navHistory.map((item, idx) => {
+                                  const isPositive = item.change >= 0;
+                                  return (
+                                    <tr key={idx} className="hover:bg-slate-50/80 transition duration-150 group">
+                                      <td className="p-5 pl-8 font-bold text-slate-700 text-[15px]">{item.date}</td>
+                                      <td className="p-5 text-right font-black text-slate-900 text-[15px]">
+                                         {Math.floor(item.nav).toLocaleString('en-US')} 
+                                         <span className="text-[10px] text-slate-400 ml-1.5 uppercase font-bold">vnd</span>
+                                      </td>
+                                      <td className="p-5 text-right pr-8">
+                                         <div className="flex flex-col items-end">
+                                           <span className={`text-[16px] font-black ${isPositive ? 'text-emerald-600' : 'text-rose-600'}`}>
+                                             {isPositive ? '+' : ''}{Math.floor(item.change).toLocaleString('en-US')}
+                                             <span className="text-[10px] ml-1 font-bold uppercase">vnd</span>
+                                           </span>
+                                           <span className={`text-[12px] font-bold ${isPositive ? 'text-emerald-600' : 'text-rose-600'} bg-opacity-10`}>
+                                             ({isPositive ? '+' : ''}{item.pct.toFixed(2)}%)
+                                           </span>
+                                         </div>
+                                      </td>
+                                    </tr>
+                                  );
+                                })}
+                              </tbody>
+                            </table>
+                          ) : (
+                            <div className="flex-1 flex flex-col items-center justify-center p-24">
+                              {/* Icon: Xám đậm rõ nét hơn */}
+                              <Activity size={48} className="text-slate-200 mb-6 animate-pulse" />
+                              <p className="text-slate-800 text-[16px] font-medium italic">
+                                Đang chờ dữ liệu Snapshot...
+                              </p>
+                            </div>
+                          )}
+                        </div>
+                      </div>
+                    </div>
+
+                  </div>
+                </div>
+              )}
+
+              {/* --- 3. TAB: NHẬT KÝ KHỚP LỆNH --- */}
+              {activeHistoryTab === 'orders' && (
+                <div className="animate-in fade-in slide-in-from-bottom-4 duration-300">
+                  <div className="overflow-hidden rounded-2xl border border-slate-100 bg-white shadow-sm">
+                    <table className="w-full text-left">
+                      <thead className="bg-slate-50 text-slate-400 text-[10px] uppercase font-bold tracking-widest border-b border-slate-100">
+                        <tr><th className="p-4 pl-6">Ngày</th><th className="p-4">Lệnh</th><th className="p-4 pr-6">Chi tiết</th></tr>
+                      </thead>
+                      <tbody className="divide-y divide-slate-50">
+                        {logs.filter(l => l.category === 'STOCK').map((log, i) => (
+                          <tr key={i} className="text-sm hover:bg-slate-50 transition">
+                            <td className="p-4 pl-6 font-bold text-slate-500">{new Date(log.date).toLocaleDateString('vi-VN')}</td>
+                            <td className={`p-4 font-black ${log.type === 'BUY' ? 'text-emerald-600' : 'text-rose-500'}`}>{log.type}</td>
+                            <td className="p-4 pr-6 font-medium text-slate-700">{log.content}</td>
+                          </tr>
+                        ))}
+                      </tbody>
+                    </table>
+                  </div>
+                </div>
+              )}
+
+              {/* --- 4. TAB: NHẬT KÝ DÒNG TIỀN --- */}
+              {activeHistoryTab === 'cashflow' && (
+                <div className="animate-in fade-in slide-in-from-bottom-4 duration-300 max-w-2xl mx-auto py-4">
+                  <div className="space-y-4">
+                    {logs.filter(l => l.category === 'CASH').map((log, idx) => {
+                      const isPositive = ['DEPOSIT', 'INTEREST', 'DIVIDEND_CASH'].includes(log.type);
+                      return (
+                        <div key={idx} className="flex gap-5 items-start group">
+                          <div className="min-w-[70px] text-right pt-2">
+                            <p className="text-xs font-black text-slate-400">{new Date(log.date).toLocaleDateString('vi-VN', {day: '2-digit', month: '2-digit'})}</p>
+                          </div>
+                          <div className="relative flex flex-col items-center self-stretch">
+                            <div className={`w-3.5 h-3.5 rounded-full mt-2.5 z-10 ring-4 ring-white ${isPositive ? 'bg-emerald-500' : 'bg-purple-500'}`}></div>
+                            <div className="w-0.5 bg-slate-100 flex-1 -mt-1 group-last:hidden"></div>
+                          </div>
+                          <div className={`flex-1 p-4 rounded-2xl border border-slate-100 shadow-sm transition ${isPositive ? 'bg-emerald-50/30' : 'bg-purple-50/30'}`}>
+                            <div className="flex justify-between items-center mb-1">
+                              <span className={`text-[10px] font-black px-2 py-0.5 rounded bg-white shadow-sm ${isPositive ? 'text-emerald-600' : 'text-purple-600'}`}>{log.type}</span>
+                            </div>
+                            <p className="text-sm font-bold text-slate-700">{log.content}</p>
+                          </div>
+                        </div>
+                      );
+                    })}
+                  </div>
+                </div>
+              )}
+            </div>
+          </div>
+
         </div>
-        </div>
-      </div>
+      </div>          
+
       
-            {/* MODAL: NẠP / RÚT TIỀN (Sửa Font chữ đen đậm + Nạp tiền) */}
+      {/* MODAL: NẠP / RÚT TIỀN (Sửa Font chữ đen đậm + Nạp tiền) */}
       {(showDeposit || showWithdraw) && (
         <div className="fixed inset-0 bg-slate-900/40 flex items-center justify-center p-4 z-50 backdrop-blur-sm">
           <div className="bg-white rounded-2xl p-8 w-full max-w-md shadow-2xl border border-emerald-100">
@@ -1044,9 +1046,8 @@ return (
             </form>
           </div>
         </div>
-      )}
-
-      
+      )} 
+         
       {/* --- MODAL MUA CỔ PHIẾU (Đã chỉnh Layout: Thành tiền xuống dòng) --- */}
       {showBuy && (
         <div className="fixed inset-0 bg-slate-900/40 flex items-center justify-center p-4 z-50 backdrop-blur-sm">

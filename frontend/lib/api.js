@@ -93,6 +93,10 @@ export const getHistoricalData = async (ticker, period = '1m') => {
     }
 };
 
+export const getNavHistory = async (limit = 10) => {
+    return axios.get(`${API_URL}/nav-history`, { params: { limit } });
+};
+
 // API Reset dữ liệu (Dùng khi cần dọn sạch hệ thống)
 export const resetData = async () => {
     return axios.post(`${API_URL}/reset-data`);
