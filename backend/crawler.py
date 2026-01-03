@@ -1,144 +1,163 @@
 import requests
+import time
+import redis
+import json
+import os
 from datetime import datetime, timedelta
 
-# --- CẤU HÌNH CACHE BIẾN GLOBAL ---
-PRICE_CACHE = {}
-LAST_CRAWL_TIME = None
-CACHE_DURATION = 30  # Giây
+# --- CẤU HÌNH REDIS (Thay thế cho PRICE_CACHE cũ) ---
+# Lấy URL từ biến môi trường trong Docker
+REDIS_URL = os.getenv("REDIS_URL", "redis://localhost:6379/0")
+r = redis.from_url(REDIS_URL, decode_responses=True)
 
 def get_current_prices(tickers: list):
     """
-    Lấy giá hiện tại của danh sách mã cổ phiếu.
-    Sử dụng Cache để tăng tốc độ phản hồi.
+    Lấy giá Real-time từ VPS. 
+    Sử dụng Redis Cache 30s - Tốc độ bàn thờ.
     """
-    global PRICE_CACHE, LAST_CRAWL_TIME
-    
     if not tickers:
         return {}
 
-    now = datetime.now()
+    output = {}
+    missing_tickers = []
 
-    # 1. KIỂM TRA CACHE: 
-    # Nếu thời gian chưa quá 30 giây và tất cả mã cần lấy đều có trong Cache
-    if LAST_CRAWL_TIME and (now - LAST_CRAWL_TIME).seconds < CACHE_DURATION:
-        # Kiểm tra xem các mã yêu cầu đã có đủ trong cache chưa
-        if all(t in PRICE_CACHE for t in tickers):
-            # print(f"DEBUG: Trả về giá từ CACHE cho {tickers}")
-            return {t: PRICE_CACHE[t] for t in tickers}
+    # 1. Thử lấy giá từ Redis trước
+    for t in tickers:
+        cached_price = r.get(f"price:{t}")
+        if cached_price:
+            output[t] = float(cached_price)
+        else:
+            missing_tickers.append(t)
 
-    # 2. GỌI API VPS (Nếu Cache hết hạn hoặc thiếu mã)
-    # print(f"DEBUG: Gọi API VPS lấy giá mới cho {tickers}")
-    try:
-        # Giả sử đây là endpoint của VPS hoặc một Datafeed bạn đang dùng
-        # URL ví dụ: bảng giá Lightning VPS
-        url = f"https://bgapidatafeed.vps.com.vn/getliststockdata/{','.join(tickers)}"
-        
-        response = requests.get(url, timeout=5)
-        if response.status_code == 200:
-            data = response.json()
+    # 2. Nếu thiếu mã nào trong Cache hoặc hết hạn, mới đi hỏi VPS
+    if missing_tickers:
+        try:
+            url = f"https://bgapidatafeed.vps.com.vn/getliststockdata/{','.join(missing_tickers)}"
+            response = requests.get(url, timeout=5)
             
-            # Cập nhật Cache mới
-            new_prices = {}
-            for item in data:
-                symbol = item.get('sym')
-                # Giá khớp lệnh (lastPrice) thường nhân 1000 vì đơn vị sàn VN là x10
-                last_price = item.get('lastPrice', 0) * 1000
-                
-                if last_price == 0:
-                    # Nếu không có giá khớp, lấy giá tham chiếu (re)
-                    last_price = item.get('re', 0) * 1000
-                
-                new_prices[symbol] = last_price
-            
-            # Lưu vào bộ nhớ tạm
-            PRICE_CACHE.update(new_prices)
-            LAST_CRAWL_TIME = now
-            
-            return {t: PRICE_CACHE.get(t, 0) for t in tickers}
-            
-    except Exception as e:
-        print(f"Lỗi Crawler: {e}")
-        # Nếu lỗi, cố gắng trả về giá cũ trong Cache nếu có
-        return {t: PRICE_CACHE.get(t, 0) for t in tickers}
+            if response.status_code == 200:
+                data = response.json()
+                for item in data:
+                    symbol = item.get('sym')
+                    last_price = item.get('lastPrice', 0) * 1000
+                    if last_price == 0:
+                        last_price = item.get('re', 0) * 1000
+                    
+                    # LƯU VÀO REDIS: Hết hạn sau 30 giây (ex=30)
+                    r.set(f"price:{symbol}", last_price, ex=30)
+                    output[symbol] = last_price
+        except Exception as e:
+            print(f"Lỗi Crawler Redis: {e}")
 
-    return {}
+    return {t: output.get(t, 0) for t in tickers}
+
 
 def get_historical_prices(ticker: str, period: str = "1m"):
+    """
+    Lấy dữ liệu lịch sử. Ưu tiên API VPS, dự phòng bằng vnstock3.
+    """
+    symbol = ticker.upper()
+    days_map = {"1m": 30, "3m": 90, "6m": 180, "1y": 365}
+    days = days_map.get(period, 30)
+    
+    # 1. THỬ LẤY TỪ VPS TRƯỚC (Nhanh, đồng bộ)
+    try:
+        import requests
+        import time
+        end_time = int(time.time())
+        start_time = int((datetime.now() - timedelta(days=days)).timestamp())
+        
+        url = f"https://bgapidatafeed.vps.com.vn/getchartdata/stock/{symbol}"
+        if symbol == "VNINDEX":
+            url = f"https://bgapidatafeed.vps.com.vn/getchartdata/index/{symbol}"
+
+        res = requests.get(url, params={"resolution": "1D", "from": start_time, "to": end_time}, timeout=5)
+        if res.status_code == 200 and 'c' in res.json() and len(res.json()['c']) > 0:
+            data = res.json()
+            result = []
+            for i in range(len(data['t'])):
+                result.append({
+                    "date": datetime.fromtimestamp(data['t'][i]).strftime('%Y-%m-%d'),
+                    "close": float(data['c'][i])
+                })
+            return result
+    except:
+        pass # Nếu VPS lỗi, nhảy xuống cách 2
+
+    # 2. DỰ PHÒNG BẰNG VNSTOCK3 (Cực kỳ ổn định cho Index)
     try:
         from vnstock3 import Vnstock
-        import pandas as pd
-        
+        # Nếu là VNINDEX, vnstock3 lấy rất chuẩn từ nguồn 'TCBS'
+        stock = Vnstock().stock(symbol=symbol, source='TCBS')
+        start_date = (datetime.now() - timedelta(days=days)).strftime('%Y-%m-%d')
         end_date = datetime.now().strftime('%Y-%m-%d')
-        # Tính toán start_date (giữ nguyên logic cũ của bạn)
-        days_map = {"1m": 30, "3m": 90, "6m": 180, "1y": 365}
-        start_date = (datetime.now() - timedelta(days=days_map.get(period, 30))).strftime('%Y-%m-%d')
-
-        # Dùng nguồn 'TCBS' để lấy Index ổn định hơn
-        stock = Vnstock().stock(symbol=ticker, source='TCBS')
+        
         df = stock.quote.history(start=start_date, end=end_date, interval='1D')
-
         if df is not None and not df.empty:
             df = df.reset_index()
-            # print(f"DEBUG: Da lay duoc {len(df)} dong du lieu cho {ticker}")
-            
             result = []
             for _, row in df.iterrows():
-                # vnstock3 thuong dung cot 'time' hoac 'date'
-                time_val = row.get('time') or row.get('date')
+                # Xử lý lấy cột thời gian (tùy nguồn mà tên cột là 'time' hoặc 'date')
+                t = row.get('time') or row.get('date')
                 result.append({
-                    "date": time_val.strftime('%Y-%m-%d') if hasattr(time_val, 'strftime') else str(time_val),
+                    "date": t.strftime('%Y-%m-%d') if hasattr(t, 'strftime') else str(t),
                     "close": float(row['close'])
                 })
             return result
-        else:
-            print(f"WARNING: Khong co du lieu cho {ticker}")
-            
     except Exception as e:
-        print(f"Lỗi lấy lịch sử {ticker}: {e}")
+        print(f"Lỗi tồi tệ nhất tại {symbol}: {e}")
     
     return []
     """
-    Lấy dữ liệu lịch sử bằng vnstock3 (Cập nhật 2026)
+    Lấy dữ liệu lịch sử chuẩn từ API Chart của VPS (Dùng cho biểu đồ Tăng trưởng)
+    Ưu điểm: Cực nhanh, đồng bộ hoàn toàn với bảng giá VPS.
     """
     try:
-        from vnstock3 import Vnstock
-        
         # 1. Thiết lập khoảng thời gian
-        end_date = datetime.now().strftime('%Y-%m-%d')
-        if period == "1m":
-            start_date = (datetime.now() - timedelta(days=30)).strftime('%Y-%m-%d')
-        elif period == "3m":
-            start_date = (datetime.now() - timedelta(days=90)).strftime('%Y-%m-%d')
-        elif period == "6m":
-            start_date = (datetime.now() - timedelta(days=180)).strftime('%Y-%m-%d')
+        days_map = {"1m": 30, "3m": 90, "6m": 180, "1y": 365}
+        days = days_map.get(period, 30)
+        
+        end_time = int(time.time())
+        start_time = int((datetime.now() - timedelta(days=days)).timestamp())
+
+        symbol = ticker.upper()
+        
+        # 2. Xác định Endpoint (Index hoặc Stock)
+        # VPS tách biệt link lấy dữ liệu cho Chỉ số và cho từng Cổ phiếu
+        if symbol == "VNINDEX":
+            url = f"https://bgapidatafeed.vps.com.vn/getchartdata/index/{symbol}"
         else:
-            start_date = (datetime.now() - timedelta(days=365)).strftime('%Y-%m-%d')
+            url = f"https://bgapidatafeed.vps.com.vn/getchartdata/stock/{symbol}"
 
-        # 2. Khởi tạo Vnstock
-        stock = Vnstock().stock(symbol=ticker, source='VCI') # VCI hoặc TCBS
+        params = {
+            "resolution": "1D", # Lấy theo ngày
+            "from": start_time,
+            "to": end_time
+        }
 
-        # 3. Lấy dữ liệu (Xử lý riêng cho chỉ số VNINDEX và Cổ phiếu)
-        if ticker.upper() == "VNINDEX":
-            # Đối với chỉ số VNINDEX
-            df = stock.quote.history(start=start_date, end=end_date, interval='1D')
-        else:
-            # Đối với cổ phiếu thường
-            df = stock.quote.history(start=start_date, end=end_date, interval='1D')
-
-        if df is not None and not df.empty:
-            # Reset index để đưa cột 'time' ra ngoài nếu nó đang là index
-            df = df.reset_index()
+        response = requests.get(url, params=params, timeout=10)
+        
+        if response.status_code == 200:
+            data = response.json()
             
-            result = []
-            for _, row in df.iterrows():
-                # Chuyển đổi format ngày tháng để Recharts (Frontend) đọc được
-                result.append({
-                    "date": row['time'].strftime('%Y-%m-%d') if hasattr(row['time'], 'strftime') else str(row['time']),
-                    "close": float(row['close'])
-                })
-            return result
+            # Cấu trúc VPS trả về: t (timestamp), c (close - giá đóng cửa)
+            if 't' in data and 'c' in data:
+                result = []
+                for i in range(len(data['t'])):
+                    # Chuyển đổi Epoch timestamp sang chuỗi YYYY-MM-DD
+                    date_str = datetime.fromtimestamp(data['t'][i]).strftime('%Y-%m-%d')
+                    result.append({
+                        "date": date_str,
+                        "close": float(data['c'][i])
+                    })
+                
+                # Sắp xếp theo thời gian tăng dần
+                result.sort(key=lambda x: x['date'])
+                return result
+                
+        print(f"WARNING: VPS không có dữ liệu lịch sử cho {symbol}")
             
     except Exception as e:
-        print(f"Lỗi lấy lịch sử {ticker}: {e}")
+        print(f"Lỗi Crawler Lịch sử ({ticker}): {e}")
     
-    return [] 
+    return []

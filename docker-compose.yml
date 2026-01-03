@@ -1,0 +1,62 @@
+services:
+  # 1. Database (PostgreSQL)
+  db:
+    image: postgres:16
+    container_name: invest_db
+    restart: always
+    environment:
+      POSTGRES_USER: admin
+      POSTGRES_PASSWORD: 2026
+      POSTGRES_DB: vn_stock
+    ports:
+      - "5432:5432"
+    volumes:
+      - postgres_data:/var/lib/postgresql/data
+
+  # 2. Cache & Queue (Redis)
+  redis:
+    image: redis:7-alpine
+    container_name: invest_redis
+    ports:
+      - "6379:6379"
+
+  # 3. API Server (FastAPI)
+  backend:
+    build: ./backend
+    container_name: invest_backend
+    restart: always
+    ports:
+      - "8000:8000"
+    environment:
+      - DATABASE_URL=postgresql://admin:2026@db:5432/vn_stock
+      - REDIS_URL=redis://redis:6379/0
+    depends_on:
+      - db
+      - redis
+
+  # 4. Background Worker (RQ)
+  worker:
+    build: ./backend
+    container_name: invest_worker
+    restart: always
+    command: rq worker --url redis://redis:6379/0
+    environment:
+      - DATABASE_URL=postgresql://admin:2026@db:5432/vn_stock
+    depends_on:
+      - redis
+      - db
+
+  # 5. Giao diện (Next.js)
+  frontend:
+    build: ./frontend
+    container_name: invest_frontend
+    restart: always
+    ports:
+      - "3000:3000"
+    environment:
+      - NEXT_PUBLIC_API_URL=http://localhost:8000
+    depends_on:
+      - backend
+
+volumes:
+  postgres_data:

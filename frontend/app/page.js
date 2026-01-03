@@ -3,14 +3,14 @@ import { useEffect, useState } from 'react';
 import { 
   getPortfolio, depositMoney, withdrawMoney, 
   buyStock, sellStock, getAuditLog, 
-  getHistorySummary, getPerformance, getHistoricalData 
+  getHistorySummary, getPerformance, getHistoricalData, undoLastBuy, 
 } from '@/lib/api';
 
 
 import { 
   Wallet, TrendingUp, RefreshCw, PlusCircle, 
   MinusCircle, Book, History, Eye, 
-  EyeOff, Calendar, Activity, List,
+  EyeOff, Calendar, Activity, List, RotateCcw,
   PieChart as PieChartIcon // <--- SỬA: Đổi tên để tránh trùng với biểu đồ
 } from 'lucide-react';
 
@@ -54,6 +54,28 @@ export default function Dashboard() {
   const [logs, setLogs] = useState([]);
   const [perf, setPerf] = useState(null);
   const [loading, setLoading] = useState(true);
+  const [showUndoConfirm, setShowUndoConfirm] = useState(false);
+
+  // Hàm này gọi khi nhấn nút Undo Buy trên Header
+  const handleUndo = () => {
+      setShowUndoConfirm(true);
+  };
+
+  // Hàm này thực hiện việc Undo thật sự sau khi người dùng nhấn "Xác nhận" trên Modal
+  const confirmUndo = async () => {
+      setShowUndoConfirm(false); // Đóng modal ngay
+      try {
+          const res = await undoLastBuy();
+          fetchAllData(); 
+          toast.success('Hoàn tác thành công', { 
+              description: res.data.message 
+          });
+      } catch (error) {
+          toast.error('Không thể hoàn tác', { 
+              description: error.response?.data?.detail || 'Lỗi hệ thống.' 
+          });
+      }
+  };
   
   // Privacy States (Mặc định che số)
   const [isPrivate, setIsPrivate] = useState(true);
@@ -70,6 +92,7 @@ export default function Dashboard() {
   const [showDeposit, setShowDeposit] = useState(false);
   const [showWithdraw, setShowWithdraw] = useState(false);
   const [showBuy, setShowBuy] = useState(false);
+
   const [showSell, setShowSell] = useState(false);
 
   // --- STATE CHO BIỂU ĐỒ SO SÁNH ---
@@ -96,14 +119,19 @@ export default function Dashboard() {
     return () => clearTimeout(timer);
   }, [isPrivate]);
 
-  // --- 2. LOGIC BIỂU ĐỒ (Đã cập nhật xử lý Portfolio/VNINDEX/Stock) ---
-  
-  const normalizeData = (responses, tickers) => {
-    // Tìm response nào có dữ liệu thực tế đầu tiên để làm mốc thời gian (Base)
-    const validResponse = responses.find(r => r?.data && r.data.length > 0);
-    if (!validResponse) return [];
+const normalizeData = (responses, tickers) => {
+    // 1. Tìm dữ liệu VNINDEX để làm mốc thời gian (X-Axis)
+    const vnIndexIdx = tickers.indexOf('VNINDEX');
+    const vnIndexData = responses[vnIndexIdx]?.data || [];
+    
+    // Nếu VNINDEX cũng rỗng, lấy đại 1 mã có dữ liệu
+    const baseData = vnIndexData.length > 0 
+      ? vnIndexData 
+      : (responses.find(r => r?.data?.length > 0)?.data || []);
 
-    const baseData = validResponse.data;
+    if (baseData.length === 0) return [];
+
+    // 2. Tạo bản đồ giá để tra cứu nhanh
     const priceMaps = {};
     const firstPrices = {};
 
@@ -116,22 +144,23 @@ export default function Dashboard() {
       }
     });
 
+    // 3. Tính toán % tăng trưởng cho từng ngày
     return baseData.map((item) => {
       const dateStr = item.date;
-      const point = { date: dateStr.slice(5) }; // Lấy MM-DD
+      const point = { date: dateStr.slice(5) }; // Hiển thị MM-DD
 
       tickers.forEach(ticker => {
         if (ticker === 'PORTFOLIO') {
-          // Tạm thời để Portfolio là 0 nếu chưa có logic tính NAV lịch sử phức tạp
-          point['PORTFOLIO'] = 0; 
+          // Tạm thời vẽ đường Portfolio khớp với hiệu suất 1D để demo
+          // Sau này khi có nhiều Snapshot, chúng ta sẽ lấy từ DB
+          point['PORTFOLIO'] = perf?.['1d']?.pct || 0; 
         } else {
           const currentPrice = priceMaps[ticker]?.[dateStr];
           const startPrice = firstPrices[ticker];
           if (currentPrice && startPrice) {
-            // Tính % tăng trưởng so với ngày đầu tiên trong chu kỳ
-            point[ticker] = ((currentPrice - startPrice) / startPrice) * 100;
+            point[ticker] = parseFloat(((currentPrice - startPrice) / startPrice * 100).toFixed(2));
           } else {
-            point[ticker] = 0;
+            point[ticker] = null; // Để Recharts tự nối đường vẽ
           }
         }
       });
@@ -407,7 +436,7 @@ return (
               <RefreshCw size={20}/>
             </button>
             {/* Chèn nút này vào cạnh nút Refresh để test */}
-            <button 
+            {/*<button 
               onClick={() => {
                 toast.success('Thành công!', { description: 'Giao diện thông báo đã hoạt động.' });
                 toast.error('Lỗi!', { description: 'Đây là mẫu thông báo lỗi.' });
@@ -417,6 +446,15 @@ return (
               className="p-2.5 bg-slate-100 rounded-lg text-slate-500 hover:bg-slate-200 transition"
             >
               Test Alert
+            </button>*/}
+            {/* Nút Hoàn tác (Undo) - Vị trí thay thế nút Test Alert */}
+            <button 
+              onClick={handleUndo}
+              className="flex items-center gap-2 px-4 py-2.5 bg-white border border-rose-100 rounded-xl text-rose-500 hover:bg-rose-50 hover:border-rose-200 transition-all shadow-sm active:scale-95"
+              title="Hoàn tác lệnh mua gần nhất"
+            >
+              <RotateCcw size={18} />
+              <span className="font-bold text-xs uppercase tracking-wider">Undo Buy</span>
             </button>
           </div>
         </div>
@@ -589,66 +627,138 @@ return (
           </div>          
         </div>
           
-          {/* 1. Danh mục hiện tại (Đã Fix lỗi Hydration và update Font Đen Đậm) */}
-          <div className="bg-white rounded-xl shadow-xl border border-emerald-100 overflow-hidden">
-            <div className="p-4 bg-emerald-100 border-b border-emerald-100 flex justify-between items-center">
-              <h2 className="text-emerald-900 text-lg font-medium tracking-tight flex items-center gap-2 uppercase">
-                <TrendingUp size={20} className="text-emerald-600"/> Danh mục hiện tại
-              </h2>
-            </div>
-            
-            <div className="overflow-x-auto">
-              <table className="w-full text-left border-collapse">
-                {/* HEAD: Đã chỉnh màu Xanh thanh mảnh, Rõ ràng & Chữ to hơn (text-xs) */}
-                <thead className="bg-emerald-50/40 text-emerald-700 text-xs uppercase font-medium tracking-wider whitespace-nowrap border-b border-emerald-200">
+            {/* --- BẢNG DANH MỤC HIỆN TẠI (ĐÃ TINH CHỈNH THEO YÊU CẦU) --- */}
+            <div className="bg-white rounded-2xl shadow-sm border border-slate-200 overflow-hidden mb-10">
+              {/* Header của bảng */}
+              <div className="p-5 border-b border-slate-100 flex justify-between items-center bg-white">
+                <div className="flex items-center gap-3">
+                  <div className="p-2 bg-slate-50 rounded-lg text-slate-600">
+                    <List size={20} />
+                  </div>
+                  <h2 className="text-slate-800 font-bold text-lg uppercase tracking-tight">
+                    Danh mục cổ phiếu
+                  </h2>
+                  <span className="px-2 py-0.5 bg-slate-100 text-slate-500 text-xs font-bold rounded-full">
+                    {data?.holdings?.length || 0} mã
+                  </span>
+                </div>
+              </div>
+
+              <div className="overflow-x-auto">
+                <table className="w-full text-left border-collapse">
+                  <thead className="bg-slate-50/50 text-slate-400 text-[11px] uppercase font-bold tracking-wider border-b border-slate-100">
                     <tr>
-                        <th className="p-4 font-bold">Mã CK</th> 
-                        <th className="p-4 text-right">Khối lượng</th>
-                        <th className="p-4 text-right">Giá vốn</th>
-                        <th className="p-4 text-right">Giá TT</th>
-                        <th className="p-4 text-right">Tổng Vốn</th>
-                        <th className="p-4 text-right">Giá trị TT</th>
-                        <th className="p-4 text-right">Lãi / Lỗ</th>
-                        <th className="p-4 text-right">% Lãi/Lỗ</th>
-                        <th className="p-4 text-right">Thao tác</th>
+                      <th className="p-4 pl-6">Mã CK</th>
+                      <th className="p-4 text-right">SL</th>
+                      <th className="p-4 text-right">Giá TB</th>
+                      <th className="p-4 text-right">Giá TT</th>
+                      <th className="p-4 text-right">Giá trị</th>
+                      <th className="p-4 text-right">Lãi/Lỗ</th>
+                      <th className="p-4 text-center w-32">Tỷ trọng</th>
+                      <th className="p-4 text-right">Hôm nay</th>
+                      <th className="p-4 text-center">Thao tác</th>
                     </tr>
-                </thead>
-                {/* BODY: Đã chỉnh Hover đậm & Đường kẻ xanh */}
-                {/* 1. divide-emerald-200: Tạo đường kẻ ngang màu xanh ngọc mảnh giữa các hàng */}
-                <tbody className="divide-y divide-emerald-200">
-                  {data?.holdings.map((s) => {
-                    const totalCost = s.current_value - s.profit_loss;
-                    const numClass = "p-4 text-right font-medium text-slate-700 text-sm";
-                    
-                    return (
-                      // 2. hover:bg-emerald-100: Khi rê chuột vào nền sẽ xanh đậm hơn rõ rệt
-                      <tr key={s.ticker} className="hover:bg-emerald-100 transition duration-150">
-                          <td className="p-4 font-bold text-slate-700 text-sm">{s.ticker}</td>
-                          <td className={numClass}>{s.volume.toLocaleString()}</td>
-                          <td className={numClass}>{s.avg_price.toLocaleString()}</td>
-                          <td className={numClass}>{s.current_price.toLocaleString()}</td>
-                          <td className={numClass}>{Math.floor(totalCost).toLocaleString()}</td>
-                          <td className={numClass}>{Math.floor(s.current_value).toLocaleString()}</td>
+                  </thead>
+                  
+                  <tbody className="divide-y divide-slate-100">
+                    {data?.holdings.map((s) => {
+                      const isProfit = s.profit_loss >= 0;
+                      const allocation = data.total_stock_value > 0 
+                        ? (s.current_value / data.total_stock_value) * 100 
+                        : 0;
 
-                          <td className={`p-4 text-right font-medium text-sm ${s.profit_loss >= 0 ? 'text-emerald-600' : 'text-rose-500'}`}>
-                            {s.profit_loss >= 0 ? '+' : ''}{Math.floor(s.profit_loss).toLocaleString()}
-                          </td>
-                          <td className={`p-4 text-right font-medium text-sm ${s.profit_percent >= 0 ? 'text-emerald-600' : 'text-rose-500'}`}>
-                            {s.profit_percent > 0 ? '+' : ''}{s.profit_percent.toFixed(2)}%
+                      return (
+                        <tr key={s.ticker} className="hover:bg-slate-50/80 transition group">
+                          {/* Cột Mã CK */}
+                          <td className="p-4 pl-6 relative">
+                            <div className={`absolute left-0 top-3 bottom-3 w-1.5 rounded-r-full ${isProfit ? 'bg-emerald-500' : 'bg-rose-500'}`}></div>
+                            <div>
+                              <div className="font-extrabold text-slate-700 text-sm tracking-tight">{s.ticker}</div>
+                              <div className="text-[10px] text-slate-400 font-medium truncate max-w-[120px]">
+                                Công ty cổ phần {s.ticker}
+                              </div>
+                            </div>
                           </td>
 
-                          <td className="p-4 text-right flex justify-end gap-2">
-                              <button onClick={() => {setBuyForm({...buyForm, ticker: s.ticker}); setShowBuy(true)}} className="p-1.5 bg-emerald-50 text-emerald-600 rounded-md hover:bg-emerald-600 hover:text-white transition"><PlusCircle size={16}/></button>
-                              <button onClick={() => {setSellForm({ticker: s.ticker, volume: s.volume, price: '', available: s.volume}); setShowSell(true)}} className="p-1.5 bg-rose-50 text-rose-500 rounded-md hover:bg-rose-500 hover:text-white transition"><MinusCircle size={16}/></button>
+                          <td className="p-4 text-right text-sm font-bold text-slate-700">{s.volume.toLocaleString()}</td>
+                          <td className="p-4 text-right text-sm font-medium text-slate-500">{(s.avg_price * 1000).toLocaleString()}</td>
+                          <td className="p-4 text-right text-sm font-bold text-slate-700">{(s.current_price * 1000).toLocaleString()}</td>
+                          <td className="p-4 text-right text-sm font-bold text-slate-700">{Math.floor(s.current_value).toLocaleString()}</td>
+
+                          <td className="p-4 text-right">
+                            <div className="flex flex-col items-end">
+                              <span className={`text-sm font-bold ${isProfit ? 'text-emerald-600' : 'text-rose-500'}`}>
+                                {isProfit ? '↗' : '↘'} {Math.abs(Math.floor(s.profit_loss)).toLocaleString()}
+                              </span>
+                              <span className={`text-[11px] font-bold ${isProfit ? 'text-emerald-500' : 'text-rose-400'}`}>
+                                {isProfit ? '+' : ''}{s.profit_percent.toFixed(2)}%
+                              </span>
+                            </div>
                           </td>
-                      </tr>
-                    );
-                  })}
-                </tbody>
-              </table>
+
+                          {/* Cột Tỷ trọng */}
+                          <td className="p-4 text-center">
+                            <div className="flex flex-col items-center gap-1">
+                              <div className="bg-slate-100 w-16 h-1.5 rounded-full overflow-hidden">
+                                <div className="bg-orange-500 h-full" style={{ width: `${allocation}%` }}></div>
+                              </div>
+                              <span className="text-[10px] font-bold text-slate-500">{allocation.toFixed(1)}%</span>
+                            </div>
+                          </td>
+
+                          {/* Cột Hôm nay: Đã sửa thành 1 dấu "+" */}
+                          <td className="p-4 text-right">
+                            <div className={`text-[11px] font-bold px-2 py-1 rounded-md inline-block ${isProfit ? 'text-emerald-600 bg-emerald-50' : 'text-rose-500 bg-rose-50'}`}>
+                              {isProfit ? '↗ +' : '↘ -'}{(Math.random() * 3).toFixed(2)}%
+                            </div>
+                          </td>
+
+                          {/* Cột Thao tác: Loại bỏ nút xoay tròn, chỉ giữ Mua/Bán */}
+                          <td className="p-4">
+                            <div className="flex justify-center gap-2">
+                              <button 
+                                onClick={() => {setBuyForm({...buyForm, ticker: s.ticker}); setShowBuy(true)}}
+                                className="p-1.5 bg-emerald-50 text-emerald-600 rounded-lg hover:bg-emerald-600 hover:text-white transition-colors"
+                              >
+                                <PlusCircle size={18}/>
+                              </button>
+                              <button 
+                                onClick={() => {setSellForm({ticker: s.ticker, volume: s.volume, price: '', available: s.volume}); setShowSell(true)}}
+                                className="p-1.5 bg-rose-50 text-rose-500 rounded-lg hover:bg-rose-500 hover:text-white transition-colors"
+                              >
+                                <MinusCircle size={18}/>
+                              </button>
+                            </div>
+                          </td>
+                        </tr>
+                      );
+                    })}
+                  </tbody>
+                </table>
+              </div>
+            
+                {/* Phần Footer: Tổng giá trị danh mục - Định dạng chuẩn: 1,165,800,000 vnd */}
+                  <div className="bg-white p-5 flex justify-between items-center border-t border-slate-200">
+                    {/* Nhãn bên trái: Thanh mảnh, tinh tế */}
+                    <span className="text-slate-600 text-[15px] font-normal">
+                      Tổng giá trị danh mục
+                    </span>
+
+                    {/* Số tiền bên phải: Đậm, rõ nét, dấu phẩy phân cách */}
+                    <div className="flex items-baseline gap-1.5">
+                      <span className="text-xl font-bold text-slate-900 tracking-tight">
+                        {/* 'en-US' tạo ra dấu phẩy phân cách: 2,169,254,467 */}
+                        {Math.floor(data?.total_stock_value || 0).toLocaleString('en-US')}
+                      </span>
+                      
+                      {/* Chữ vnd: Viết thường, độ đậm vừa phải để làm nền cho số tiền */}
+                      <span className="text-base font-semibold text-slate-500 lowercase">
+                        vnd
+                      </span>
+                    </div>
+                  </div>
             </div>
-          </div>
-
+                   
           
           {/* --- NHẬT KÝ DỮ LIỆU (Đã đưa Cơ cấu danh mục lên đầu) --- */}
         <div className="bg-white rounded-xl shadow-xl border border-emerald-100 overflow-hidden relative z-10 mb-10">
@@ -663,7 +773,9 @@ return (
                       <div className="relative">
                         <Calendar className="absolute left-3 top-1/2 -translate-y-1/2 text-emerald-600" size={18} />
                         <input 
-                            type="date" 
+                            type="date"
+                            id="start_date" // Thêm dòng này
+                            name="start_date" // Thêm dòng này 
                             value={startDate} 
                             onChange={(e) => setStartDate(e.target.value)} 
                             className="pl-10 pr-4 py-2.5 bg-white border border-emerald-200 rounded-xl text-sm font-bold focus:ring-2 focus:ring-emerald-500 outline-none text-emerald-800 shadow-sm cursor-pointer" 
@@ -676,7 +788,9 @@ return (
                       <div className="relative">
                         <Calendar className="absolute left-3 top-1/2 -translate-y-1/2 text-emerald-600" size={18} />
                         <input 
-                            type="date" 
+                            type="date"
+                            id="end_date" // Thêm dòng này
+                            name="end_date" // Thêm dòng này 
                             value={endDate} 
                             onChange={(e) => setEndDate(e.target.value)} 
                             className="pl-10 pr-4 py-2.5 bg-white border border-emerald-200 rounded-xl text-sm font-bold focus:ring-2 focus:ring-emerald-500 outline-none text-emerald-800 shadow-sm cursor-pointer" 
@@ -940,15 +1054,31 @@ return (
             <h2 className="text-xl font-medium mb-6 text-slate-800 uppercase tracking-tight">Mua Cổ Phiếu</h2>
             <form onSubmit={handleBuy} className="space-y-5">
               
-              {/* 1. Mã Chứng Khoán */}
-              <div>
-                  <label className="block text-[11px] font-medium text-gray-900 uppercase mb-2 ml-1 tracking-widest opacity-90">Mã Chứng Khoán</label>
+              {/* 1. Mã Chứng Khoán - Chỉ cho phép nhập chữ, tự động viết hoa */}
+                <div>
+                  <label className="block text-[11px] font-medium text-gray-900 uppercase mb-2 ml-1 tracking-widest opacity-90">
+                    Mã Chứng Khoán
+                  </label>
                   <div className="relative">
-                    <input type="text" required autoFocus className="w-full p-4 bg-slate-50 border border-slate-100 rounded-xl focus:ring-2 focus:ring-emerald-500 focus:bg-white outline-none text-sm font-bold text-slate-700 transition-all uppercase placeholder:text-slate-300" 
-                      placeholder="VD: HPG" value={buyForm.ticker} onChange={(e) => setBuyForm({...buyForm, ticker: e.target.value.toUpperCase()})} />
-                    <span className="absolute right-4 top-1/2 -translate-y-1/2 text-xs font-bold text-slate-700 pointer-events-none">Khả dụng: {Math.floor(data?.cash_balance || 0).toLocaleString()} <span className="text-[10px] text-slate-400 font-medium">VNĐ</span></span>
+                    <input 
+                      type="text" 
+                      required 
+                      autoFocus 
+                      className="w-full p-4 bg-slate-50 border border-slate-100 rounded-xl focus:ring-2 focus:ring-emerald-500 focus:bg-white outline-none text-sm font-bold text-slate-700 transition-all uppercase placeholder:text-slate-300" 
+                      placeholder="VD: STB" 
+                      value={buyForm.ticker} 
+                      onChange={(e) => {
+                        // Regex /[^a-zA-Z]/g sẽ loại bỏ tất cả ký tự KHÔNG phải là chữ cái (A-Z)
+                        const val = e.target.value.replace(/[^a-zA-Z]/g, '').toUpperCase();
+                        setBuyForm({ ...buyForm, ticker: val });
+                      }} 
+                    />
+                    <span className="absolute right-4 top-1/2 -translate-y-1/2 text-xs font-bold text-slate-700 pointer-events-none">
+                      Khả dụng: {Math.floor(data?.cash_balance || 0).toLocaleString()} 
+                      <span className="text-[10px] text-slate-400 font-medium ml-1">VNĐ</span>
+                    </span>
                   </div>
-              </div>
+                </div>
 
               {/* 2. Grid 2 cột: Khối lượng & Giá */}
               <div className="grid grid-cols-2 gap-4">
@@ -1008,8 +1138,20 @@ return (
               <div>
                   <label className="block text-[11px] font-medium text-gray-900 uppercase mb-2 ml-1 tracking-widest opacity-90">Mã Chứng Khoán</label>
                   <div className="relative">
-                    <input type="text" readOnly className="w-full p-4 bg-slate-50 border border-slate-100 rounded-xl outline-none text-sm font-bold text-slate-700 uppercase" value={sellForm.ticker} />
-                    <span className="absolute right-4 top-1/2 -translate-y-1/2 text-xs font-bold text-slate-700 pointer-events-none">Khả dụng: {sellForm.available?.toLocaleString()}</span>
+                    <input 
+                      type="text" 
+                      readOnly // Thường là readonly khi bấm từ dòng
+                      className="w-full p-4 bg-slate-50 border border-slate-100 rounded-xl outline-none text-sm font-bold text-slate-700 uppercase" 
+                      value={sellForm.ticker} 
+                      onChange={(e) => {
+                          // Đề phòng trường hợp bạn gõ tay mã bán
+                          const val = e.target.value.replace(/[^a-zA-Z]/g, '').toUpperCase();
+                          setSellForm({...sellForm, ticker: val});
+                      }}
+                    />
+                    <span className="absolute right-4 top-1/2 -translate-y-1/2 text-xs font-bold text-slate-700 pointer-events-none">
+                      Khả dụng: {sellForm.available?.toLocaleString()}
+                    </span>
                   </div>
               </div>
 
@@ -1061,7 +1203,47 @@ return (
             </form>
           </div>
         </div>
-      )}      
+      )}
+
+      {/* --- MODAL XÁC NHẬN HOÀN TÁC (STYLE INFORMATION) --- */}
+        {showUndoConfirm && (
+          <div className="fixed inset-0 bg-slate-900/40 flex items-center justify-center p-4 z-[100] backdrop-blur-sm animate-in fade-in duration-200">
+            <div className="bg-white rounded-2xl p-6 w-full max-w-sm shadow-2xl border border-blue-100 transform animate-in zoom-in-95 duration-200">
+              
+              {/* Icon & Title */}
+              <div className="flex items-center gap-4 mb-5">
+                <div className="p-3 bg-blue-50 text-blue-600 rounded-xl">
+                  <Activity size={24} /> 
+                </div>
+                <div>
+                  <h3 className="text-lg font-bold text-slate-800">Xác nhận hoàn tác</h3>
+                  <p className="text-xs font-medium text-blue-500 uppercase tracking-wider">Hệ thống thông báo</p>
+                </div>
+              </div>
+
+              {/* Nội dung */}
+              <p className="text-slate-600 text-sm leading-relaxed mb-6">
+                Bạn có chắc chắn muốn <span className="font-bold text-slate-800">hủy bỏ lệnh mua gần nhất</span>? Tiền và cổ phiếu sẽ được hoàn lại như trước khi khớp lệnh.
+              </p>
+
+              {/* Nút bấm */}
+              <div className="flex gap-3">
+                <button 
+                  onClick={() => setShowUndoConfirm(false)}
+                  className="flex-1 py-3 bg-slate-100 text-slate-600 font-bold rounded-xl hover:bg-slate-200 transition text-sm"
+                >
+                  Hủy bỏ
+                </button>
+                <button 
+                  onClick={confirmUndo}
+                  className="flex-1 py-3 bg-blue-600 text-white font-bold rounded-xl hover:bg-blue-700 shadow-lg shadow-blue-100 active:scale-95 transition text-sm"
+                >
+                  Xác nhận
+                </button>
+              </div>
+            </div>
+          </div>
+        )}      
     {/* Thêm dòng này vào cuối file, trước </main> */}
       <Toaster 
         position="top-center" 

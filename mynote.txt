@@ -80,3 +80,10 @@ Dừng: brew services stop postgresql@16
 Kiểm tra trạng thái: brew services list
 
 ./venv/bin/python -c "import models; models.Base.metadata.create_all(bind=models.engine)"
+
+npm run dev
+
+uvicorn main:app --reload
+
+softwareupdate --install-rosetta --agree-to-license
+docker-compose up --build

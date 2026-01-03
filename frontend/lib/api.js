@@ -1,80 +1,99 @@
 // File: frontend/lib/api.js
 import axios from 'axios';
+import { toast } from 'sonner';
 
-import { toast } from 'sonner'; 
-
-// 1. Khai báo đường dẫn Backend (Sửa lỗi API_URL is not defined)
+// 1. Cấu hình địa chỉ Backend
 const API_URL = 'http://localhost:8000';
 
-
+// 2. Cấu hình Interceptor (Người gác cổng)
+// Tự động bắt lỗi kết nối toàn cục để triệt tiêu màn hình đỏ lỗi hệ thống
 axios.interceptors.response.use(
-  (response) => response,
-  (error) => {
-    if (!error.response) {
-      // CHỈ HIỆN TOAST, KHÔNG THROW LỖI LÀM SẬP APP
-      toast.error('Máy chủ Backend đang tắt hoặc lỗi mạng!');
+    (response) => response, 
+    (error) => {
+        // Trường hợp Backend chưa bật hoặc lỗi mạng
+        if (!error.response) {
+            toast.error('Lỗi kết nối hệ thống', {
+                description: 'Máy chủ Backend (Python) đang tắt hoặc lỗi mạng. Vui lòng kiểm tra Terminal.',
+            });
+        } 
+        // Các lỗi nghiệp vụ (400, 422, 500) sẽ được catch trực tiếp tại hàm handle trên giao diện
+        return Promise.reject(error);
     }
-    return Promise.reject(error);
-  }
 );
 
-// ... Các hàm export bên dưới giữ nguyên ...
+// --- CÁC HÀM GỌI API ---
+
+// [NEW] Siêu API gộp: Lấy toàn bộ dữ liệu khởi tạo Dashboard trong 1 lần gọi
+export const getDashboardInit = async () => {
+    return axios.get(`${API_URL}/dashboard-init`);
+};
 
 // Lấy thông tin Portfolio (Danh mục, tiền, NAV)
 export const getPortfolio = async () => {
     return axios.get(`${API_URL}/portfolio`);
 };
 
-// Lấy lịch sử giao dịch (Audit Log)
+// Lấy lịch sử giao dịch tổng hợp (Timeline)
 export const getAuditLog = async () => {
-    return axios.get(`${API_URL}/logs`); // Hoặc endpoint tương ứng bên backend
+    return axios.get(`${API_URL}/logs`);
 };
 
-// Lấy hiệu suất (Performance)
+// Lấy hiệu suất tăng trưởng (1D, 1M, 1Y, YTD)
 export const getPerformance = async () => {
-    return axios.get(`${API_URL}/performance`); // Endpoint giả định, check lại backend nếu khác
+    return axios.get(`${API_URL}/performance`);
 };
 
-// Tính toán lãi lỗ theo khoảng thời gian
+// Tra cứu lãi lỗ thực nhận theo khoảng thời gian
 export const getHistorySummary = async (startDate, endDate) => {
     return axios.get(`${API_URL}/history-summary`, { 
         params: { start_date: startDate, end_date: endDate } 
     });
 };
 
-// Nạp tiền
+// --- API GIAO DỊCH (POST) ---
+
+// Nạp tiền vào vốn đầu tư
 export const depositMoney = async (data) => {
-    // data = { amount: 100000, description: "..." }
     return axios.post(`${API_URL}/deposit`, data);
 };
 
-// Rút tiền
+// Rút tiền khỏi tài khoản
 export const withdrawMoney = async (data) => {
     return axios.post(`${API_URL}/withdraw`, data);
 };
 
-// Mua cổ phiếu (Sửa lỗi buyStock doesn't exist)
+// Khớp lệnh mua cổ phiếu
 export const buyStock = async (data) => {
-    // data = { ticker: 'HPG', volume: 100, price: 20.5 }
     return axios.post(`${API_URL}/buy`, data);
 };
 
-// Bán cổ phiếu
+// Khớp lệnh bán cổ phiếu
 export const sellStock = async (data) => {
     return axios.post(`${API_URL}/sell`, data);
 };
 
+// [NEW] Hoàn tác (Undo) lệnh mua gần nhất
+export const undoLastBuy = async () => {
+    return axios.post(`${API_URL}/undo-last-buy`);
+};
+
+// --- API DỮ LIỆU THỊ TRƯỜNG ---
+
+// Lấy dữ liệu lịch sử vẽ biểu đồ (Crawler VPS)
 export const getHistoricalData = async (ticker, period = '1m') => {
-  try {
-    const res = await axios.get(`${API_URL}/historical`, {
-      params: { ticker, period }
-    });
-    return res.data; 
-  } catch (error) {
-    // Thay vì console.error, chúng ta bắn thông báo lỗi
-    toast.error('Lỗi kết nối bảng giá', { 
-      description: `Không thể lấy dữ liệu lịch sử của mã ${ticker}. Vui lòng kiểm tra server.` 
-    });
-    return null;
-  }
+    try {
+        const res = await axios.get(`${API_URL}/historical`, {
+            params: { ticker, period }
+        });
+        return res.data; 
+    } catch (error) {
+        // Lỗi này không làm sập app, chỉ log ra console
+        console.error(`Lỗi lấy lịch sử ${ticker}:`, error);
+        return null;
+    }
+};
+
+// API Reset dữ liệu (Dùng khi cần dọn sạch hệ thống)
+export const resetData = async () => {
+    return axios.post(`${API_URL}/reset-data`);
 };
