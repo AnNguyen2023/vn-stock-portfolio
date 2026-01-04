@@ -153,7 +153,14 @@ def withdraw_money(req: schemas.DepositRequest, db: Session = Depends(get_db)):
 @app.post("/buy")
 def buy_stock(req: schemas.BuyStockRequest, db: Session = Depends(get_db)):
     ticker = req.ticker.upper()
-    total_cost = (Decimal(str(req.volume)) * Decimal(str(req.price))) * (1 + Decimal(str(req.fee_rate)))
+    volume = Decimal(str(req.volume))
+    price_vnd = Decimal(str(req.price)) 
+    fee_rate = Decimal(str(req.fee_rate))
+
+    # TÍNH TOÁN RẠCH RÒI
+    total_value = volume * price_vnd  # Giá trị khớp lệnh gốc
+    fee = total_value * fee_rate      # Tiền phí môi giới
+    total_cost = total_value + fee    # Tổng tiền anh Zon phải trả (đã gồm phí)
     
     asset = db.query(models.AssetSummary).first()
     if not asset or asset.cash_balance < total_cost:
@@ -161,40 +168,112 @@ def buy_stock(req: schemas.BuyStockRequest, db: Session = Depends(get_db)):
 
     holding = db.query(models.TickerHolding).filter_by(ticker=ticker).first()
     if holding:
-        new_vol = holding.total_volume + req.volume
-        holding.average_price = ((holding.total_volume * holding.average_price) + total_cost) / new_vol
+        # Nếu đang có hàng, tính lại giá vốn bình quân (Weighted Average)
+        current_total_value = holding.total_volume * holding.average_price
+        new_vol = holding.total_volume + volume
+        holding.average_price = (current_total_value + total_cost) / new_vol
         holding.total_volume = new_vol
-        holding.available_volume = new_vol
+        holding.available_volume = new_vol # T+0
+        holding.liquidated_at = None       # Reset ngày chốt nếu mua lại mã cũ
     else:
-        db.add(models.TickerHolding(ticker=ticker, total_volume=req.volume, available_volume=req.volume, average_price=total_cost/req.volume))
+        # Nếu mua mới hoàn toàn
+        db.add(models.TickerHolding(
+            ticker=ticker, 
+            total_volume=volume, 
+            available_volume=volume, 
+            average_price=(total_cost / volume)
+        ))
 
+    # Trừ tiền mặt
     asset.cash_balance -= total_cost
-    db.add(models.CashFlow(type=models.CashFlowType.WITHDRAW, amount=total_cost, description=f"Mua {req.volume} {ticker}"))
-    db.add(models.StockTransaction(ticker=ticker, type=models.TransactionType.BUY, volume=req.volume, price=req.price, total_value=total_cost))
+    
+    # Ghi log dòng tiền
+    db.add(models.CashFlow(
+        type=models.CashFlowType.WITHDRAW, 
+        amount=total_cost, 
+        description=f"Mua {int(volume):,} {ticker}"
+    ))
+    
+    # Ghi lịch sử giao dịch (Đầy đủ fee, total_value và note)
+    db.add(models.StockTransaction(
+        ticker=ticker, 
+        type=models.TransactionType.BUY, 
+        volume=volume, 
+        price=price_vnd, 
+        fee=fee,                # <--- ĐÃ THÊM PHÍ
+        total_value=total_cost, # <--- TỔNG TIỀN THỰC CHI
+        note=req.note           # <--- ĐÃ THÊM GHI CHÚ
+    ))
+    
     db.commit()
-    return {"message": "Đã khớp lệnh mua"}
+    return {"message": f"Đã khớp lệnh mua {int(volume)} {ticker}"}
 
-@app.post("/sell")
+@app.post("/sell") 
 def sell_stock(req: schemas.SellStockRequest, db: Session = Depends(get_db)):
     ticker = req.ticker.upper()
     holding = db.query(models.TickerHolding).filter_by(ticker=ticker).first()
+    
+    # Kiểm tra số lượng
     if not holding or holding.total_volume < req.volume:
-        raise_error("Không đủ cổ phiếu")
+        raise_error(f"Không đủ {ticker} để bán")
 
-    revenue = (Decimal(str(req.volume)) * Decimal(str(req.price))) * (1 - Decimal(str(req.fee_rate)) - Decimal(str(req.tax_rate)))
-    profit = revenue - (Decimal(str(req.volume)) * holding.average_price)
+    volume_to_sell = Decimal(str(req.volume))
+    price_vnd = Decimal(str(req.price)) 
+    
+    # TÍNH TOÁN RẠCH RÒI
+    gross_revenue = volume_to_sell * price_vnd                 # Doanh thu gốc
+    fee = gross_revenue * Decimal(str(req.fee_rate))           # Phí bán
+    tax = gross_revenue * Decimal(str(req.tax_rate))           # Thuế bán (0.1%)
+    net_proceeds = gross_revenue - fee - tax                   # Tiền thực nhận về ví
 
-    holding.total_volume -= req.volume
-    holding.available_volume = holding.total_volume
-    if holding.total_volume <= 0: db.delete(holding)
+    # Tính lãi/lỗ của lệnh này
+    cost_basis = volume_to_sell * holding.average_price 
+    profit = net_proceeds - cost_basis
 
+    # Cập nhật danh mục
+    holding.total_volume -= volume_to_sell
+    holding.available_volume = holding.total_volume # T+0
+    
+    # Nếu bán hết sạch mã này
+    if holding.total_volume <= 0:
+        holding.liquidated_at = datetime.now() # Đánh dấu ngày chốt sổ để 3 năm sau mới xóa
+        holding.average_price = 0
+
+    # Cộng tiền mặt thực nhận vào ví cho anh Zon
     asset = db.query(models.AssetSummary).first()
-    asset.cash_balance += revenue
-    db.add(models.CashFlow(type=models.CashFlowType.DEPOSIT, amount=revenue, description=f"Bán {req.volume} {ticker}"))
-    db.add(models.StockTransaction(ticker=ticker, type=models.TransactionType.SELL, volume=req.volume, price=req.price, total_value=revenue))
-    db.add(models.RealizedProfit(ticker=ticker, volume=req.volume, buy_avg_price=holding.average_price if holding else 0, sell_price=req.price, net_profit=profit))
+    asset.cash_balance += net_proceeds
+
+    # Ghi log dòng tiền (Tiền về ví)
+    db.add(models.CashFlow(
+        type=models.CashFlowType.DEPOSIT, 
+        amount=net_proceeds, 
+        description=f"Bán {int(volume_to_sell):,} {ticker}"
+    ))
+
+    # Ghi lịch sử giao dịch (Đầy đủ fee, tax, total_value và note)
+    db.add(models.StockTransaction(
+        ticker=ticker, 
+        type=models.TransactionType.SELL, 
+        volume=volume_to_sell, 
+        price=price_vnd, 
+        fee=fee,                # <--- ĐÃ THÊM PHÍ
+        tax=tax,                # <--- ĐÃ THÊM THUẾ
+        total_value=net_proceeds, # <--- TIỀN THỰC NHẬN
+        note=req.note           # <--- ĐÃ THÊM GHI CHÚ
+    ))
+
+    # Ghi nhận lãi lỗ đã thực hiện
+    db.add(models.RealizedProfit(
+        ticker=ticker, 
+        volume=volume_to_sell, 
+        buy_avg_price=holding.average_price if holding.total_volume > 0 else (cost_basis/volume_to_sell), 
+        sell_price=price_vnd, 
+        net_profit=profit
+    ))
+
     db.commit()
-    return {"message": "Đã khớp lệnh bán"}
+    return {"message": f"Đã bán {int(volume_to_sell)} {ticker}. Tiền về: {float(net_proceeds):,.0f} đ"}
+
 
 @app.post("/undo-last-buy")
 def undo_last_buy(db: Session = Depends(get_db)):
@@ -272,13 +351,30 @@ def undo_last_buy(db: Session = Depends(get_db)):
 
 @app.get("/logs")
 def get_audit_log(db: Session = Depends(get_db)):
+    """Gộp Nhật ký Dòng tiền và Nhật ký Khớp lệnh - Đã thêm ID để sửa Note"""
     cash = db.query(models.CashFlow).all()
     stocks = db.query(models.StockTransaction).all()
+    
     logs = []
     for c in cash:
-        logs.append({"date": c.created_at, "type": c.type.value, "content": f"{c.description}: {int(c.amount):,} đ", "category": "CASH"})
+        logs.append({
+            "id": c.id, # Thêm ID
+            "date": c.created_at,
+            "type": c.type.value if hasattr(c.type, 'value') else str(c.type),
+            "content": f"{c.description}: {int(c.amount):,} VND",
+            "category": "CASH",
+            "note": "" # CashFlow tạm thời chưa cần Note
+        })
     for s in stocks:
-        logs.append({"date": s.transaction_date, "type": s.type.value, "content": f"{s.type.value} {int(s.volume)} {s.ticker} giá {int(s.price):,}", "category": "STOCK"})
+        logs.append({
+            "id": s.id, # Thêm ID quan trọng để sửa Note
+            "date": s.transaction_date,
+            "type": s.type.value if hasattr(s.type, 'value') else str(s.type),
+            "content": f"{s.type.value} {int(s.volume):,} {s.ticker} giá {int(s.price):,}",
+            "category": "STOCK",
+            "note": s.note or "" # Trả về note hiện tại
+        })
+    
     logs.sort(key=lambda x: x['date'], reverse=True)
     return logs
 
@@ -413,7 +509,6 @@ def get_performance(db: Session = Depends(get_db)):
 
 #======================================================================================================
 
-
 @app.get("/performance")
 @app.get("/historical")
 def get_historical(ticker: str, period: str = "1m"):
@@ -468,6 +563,17 @@ def get_nav_history(db: Session = Depends(get_db), limit: int = 10):
 
     # Trả về danh sách mới nhất lên đầu
     return history[::-1]
+
+@app.post("/update-note")
+def update_note(tx_id: int, note: str, db: Session = Depends(get_db)):
+    """Cho phép anh Zon cập nhật ghi chú cho một giao dịch bất kỳ sau này"""
+    transaction = db.query(models.StockTransaction).filter(models.StockTransaction.id == tx_id).first()
+    if not transaction:
+        raise_error("Không tìm thấy giao dịch này")
+    
+    transaction.note = note
+    db.commit()
+    return {"message": "Đã cập nhật ghi chú thành công"}
 
 @app.post("/reset-data")
 def reset_data(db: Session = Depends(get_db)):

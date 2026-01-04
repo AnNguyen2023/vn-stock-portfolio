@@ -72,6 +72,10 @@ export const sellStock = async (data) => {
     return axios.post(`${API_URL}/sell`, data);
 };
 
+export const updateTransactionNote = async (txId, note) => {
+    return axios.post(`${API_URL}/update-note`, null, { params: { tx_id: txId, note: note } });
+};
+
 // [NEW] Hoàn tác (Undo) lệnh mua gần nhất
 export const undoLastBuy = async () => {
     return axios.post(`${API_URL}/undo-last-buy`);

@@ -39,28 +39,33 @@ class AssetSummary(Base):
     transaction_fee_rate = Column(Numeric(5, 4), default=0.0015)
     tax_rate = Column(Numeric(5, 4), default=0.001)
     last_interest_calc_date = Column(Date, default=datetime.now().date)
-
+# =================================================================================== #
 class TickerHolding(Base):
     __tablename__ = "ticker_holdings"
     ticker = Column(String(10), primary_key=True, index=True)
-    total_volume = Column(Numeric(20, 4), default=0) # Đã tối ưu cho tính toán
+    total_volume = Column(Numeric(20, 4), default=0)
     available_volume = Column(Numeric(20, 4), default=0)
     average_price = Column(Numeric(20, 4), default=0)
     last_updated = Column(DateTime, default=datetime.now, onupdate=datetime.now)
-
+    # MỚI: Ngày bán hết sạch mã này. Nếu > 0 thì để Null. 
+    # Khi volume về 0, ta sẽ ghi ngày vào đây để Worker tính mốc 3 năm xóa log.
+    liquidated_at = Column(DateTime, nullable=True)
 class StockTransaction(Base):
     __tablename__ = "stock_transactions"
     id = Column(Integer, primary_key=True, index=True)
     ticker = Column(String(10), index=True)
     type = Column(Enum(TransactionType))
-    volume = Column(Numeric(20, 4)) # Đã tối ưu
+    volume = Column(Numeric(20, 4))
     price = Column(Numeric(20, 4))
     fee = Column(Numeric(20, 4))
     tax = Column(Numeric(20, 4), default=0)
     total_value = Column(Numeric(20, 4))
-    transaction_date = Column(DateTime, default=datetime.now, index=True) # Đã bỏ dòng lặp
+    transaction_date = Column(DateTime, default=datetime.now, index=True)
     settlement_date = Column(Date)
+    # MỚI: Lưu ghi chú cho từng lệnh mua/bán của anh Zon
+    note = Column(String(500), nullable=True)
 
+# =================================================================================== #
 class RealizedProfit(Base):
     __tablename__ = "realized_profit"
     id = Column(Integer, primary_key=True, index=True)

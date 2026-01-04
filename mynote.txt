@@ -169,3 +169,22 @@ services:
 volumes:
   postgres_data:
 -----------------------------------------------
+
+
+frontend/
+├── app/
+│   ├── components/          <-- Chứa các món đồ nội thất (UI lẻ)
+│   │   ├── SummaryCard.js
+│   │   ├── PerfBox.js
+│   │   └── StatusBadge.js   (mấy cái xanh đỏ ++2.3%)
+│   ├── sections/            <-- Chứa các khu vực lớn (Blocks)
+│   │   ├── Header.js        (Block V)
+│   │   ├── GrowthChart.js   (Block VII)
+│   │   ├── StockTable.js    (Block VIII)
+│   │   └── HistoryTabs.js   (Block IX)
+│   ├── modals/              <-- Chứa các cửa sổ hành động
+│   │   ├── CashModal.js     (Nạp/Rút)
+│   │   ├── TradeModal.js    (Mua/Bán)
+│   │   ├── UndoModal.js     (Xác nhận Undo)
+│   │   └── NoteModal.js     (Sửa ghi chú)
+│   └── page.js              <-- File chính (Lúc này chỉ còn ~100 dòng)
