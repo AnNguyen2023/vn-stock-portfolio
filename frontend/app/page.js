@@ -108,8 +108,8 @@ export default function Dashboard() {
       // 300,000ms = 5 phút
       timer = setTimeout(() => { 
         setIsPrivate(true); 
-        toast.info('Chế độ riêng tư', { description: 'Số dư đã được ẩn tự động sau 5 giây.' });
-      }, 5000); 
+        toast.info('Chế độ riêng tư', { description: 'Số dư đã được ẩn tự động sau 15 giây.' });
+      }, 15000); 
     }
     return () => clearTimeout(timer);
   }, [isPrivate]);
@@ -119,95 +119,104 @@ export default function Dashboard() {
    * 2. Hàm normalizeData: Chuẩn hóa dữ liệu từ nhiều API (VN-Index & các mã CP)
    * Giúp đưa tất cả về cùng một mốc thời gian và tính toán % tăng trưởng từ ngày 0.
    */
-  const normalizeData = (responses, tickers) => {
-    // A. Tìm dữ liệu VNINDEX làm mốc thời gian chuẩn (Baseline)
-    const vnIndexIdx = tickers.indexOf('VNINDEX');
-    const vnIndexData = responses[vnIndexIdx]?.data || [];
-    
-    // Nếu VNINDEX không có data, tìm mã đầu tiên có data để làm mốc
-    const baseData = vnIndexData.length > 0 
-      ? vnIndexData 
-      : (responses.find(r => r?.data?.length > 0)?.data || []);
+  // page.js - BLOCK II
+const normalizeData = (responses, tickers) => {
+  // 1. Tìm bất kỳ mã nào có dữ liệu để làm mốc thời gian (X-Axis)
+  // Ưu tiên VNINDEX, nếu không có thì lấy mã đầu tiên có data
+  const validResponse = responses.find(r => r?.data && r.data.length > 0);
+  if (!validResponse) {
+    console.log("DEBUG: Không có dữ liệu để chuẩn hóa");
+    return [];
+  }
 
-    if (baseData.length === 0) return [];
+  const baseData = validResponse.data;
+  const priceMaps = {};
+  const firstPrices = {};
 
-    // B. Tạo bản đồ giá (Price Map) để tra cứu nhanh theo ngày
-    const priceMaps = {};
-    const firstPrices = {};
+  // 2. Tạo bản đồ giá nhanh
+  tickers.forEach((ticker, index) => {
+    const stockData = responses[index]?.data || [];
+    if (stockData.length > 0) {
+      priceMaps[ticker] = {};
+      stockData.forEach(item => {
+        priceMaps[ticker][item.date] = item.close;
+      });
+      // Lấy giá đóng cửa đầu tiên để tính % tăng trưởng
+      firstPrices[ticker] = stockData[0].close;
+    }
+  });
 
-    tickers.forEach((ticker, index) => {
-      const stockData = responses[index]?.data || [];
-      if (stockData.length > 0) {
-        priceMaps[ticker] = {};
-        stockData.forEach(item => { 
-          priceMaps[ticker][item.date] = item.close; 
-        });
-        // Lưu giá đóng cửa của ngày đầu tiên trong chu kỳ để tính %
-        firstPrices[ticker] = stockData[0].close;
+  // 3. Khớp dữ liệu vào mốc thời gian
+  const result = baseData.map((item) => {
+    const dateStr = item.date;
+    const point = { date: dateStr.slice(5) }; // Hiện MM-DD
+
+    tickers.forEach(ticker => {
+      if (ticker === 'PORTFOLIO') {
+        // Tạm thời lấy hiệu suất 1D để vẽ đường Portfolio
+        point['PORTFOLIO'] = perf?.['1d']?.pct || 0;
+      } else {
+        const currentPrice = priceMaps[ticker]?.[dateStr];
+        const startPrice = firstPrices[ticker];
+        
+        if (currentPrice && startPrice && startPrice !== 0) {
+          const growth = ((currentPrice - startPrice) / startPrice) * 100;
+          point[ticker] = parseFloat(growth.toFixed(2));
+        } else {
+          // Nếu ngày này mã đó kẹt giá, lấy bằng 0 hoặc Null để Recharts tự nối
+          point[ticker] = 0; 
+        }
       }
     });
+    return point;
+  });
 
-    // C. Khớp dữ liệu của từng mã vào từng mốc ngày của Baseline
-    return baseData.map((item) => {
-      const dateStr = item.date;
-      // Chỉ lấy phần tháng-ngày (MM-DD) để trục ngang biểu đồ thanh thoát
-      const point = { date: dateStr.slice(5) }; 
-
-      tickers.forEach(ticker => {
-        if (ticker === 'PORTFOLIO') {
-          /**
-           * Tạm thời vẽ đường Portfolio khớp với hiệu suất 1D để demo.
-           * Khi hệ thống có đủ Snapshot lịch sử trong DB, ta sẽ thay bằng data thật.
-           */
-          point['PORTFOLIO'] = perf?.['1d']?.pct || 0; 
-        } else {
-          const currentPrice = priceMaps[ticker]?.[dateStr];
-          const startPrice = firstPrices[ticker];
-          
-          if (currentPrice && startPrice) {
-            // Công thức: % Tăng trưởng = ((Giá hiện tại / Giá ngày đầu) - 1) * 100
-            const growth = ((currentPrice / startPrice) - 1) * 100;
-            point[ticker] = parseFloat(growth.toFixed(2));
-          } else {
-            // Nếu ngày này mã đó không giao dịch (lễ/tết), trả về null để Recharts nối đường kẻ
-            point[ticker] = null; 
-          }
-        }
-      });
-      return point;
-    });
-  };
+  console.log("DEBUG: Dữ liệu biểu đồ sau chuẩn hóa:", result.length);
+  return result;
+};
 
   {/* --- KẾT THÚC BLOCK II --- */}
-  {/* ========================================================================================= */}
-  {/* BLOCK III: LOGIC GỌI API (FETCH DATA & EFFECTS) */}
-  {/* ========================================================================================= */}
-
-  /**
-   * 1. Hàm fetchAllData: Tải dữ liệu tổng thể cho Dashboard
-   * Áp dụng cơ chế Priority Loading (Tải ưu tiên) để tăng tốc hiển thị.
-   */
+  // =========================================================================================
+  // BLOCK III: LOGIC GỌI API (FETCH DATA & EFFECTS) - BẢN FIX LỖI XOAY BIỂU ĐỒ
+  // =========================================================================================
+  
   const fetchAllData = async () => {
+    console.log("--- BẮT ĐẦU TẢI DỮ LIỆU DASHBOARD ---");
     try {
+      // Nhóm Ưu tiên 1: Portfolio (Tiền mặt, Giá trị cổ phiếu, NAV)
       const resP = await getPortfolio();
-      
-      // SỬA TẠI ĐÂY: Dù có data hay không cũng tắt Loading để hiện khung App
       if (resP?.data) {
         setData(resP.data);
+        console.log("DEBUG: Đã nhận dữ liệu Portfolio");
       }
-      setLoading(false); // <--- Đưa dòng này ra ngoài dấu if
+      
+      // Tắt màn hình loading chính ngay khi có Portfolio
+      setLoading(false); 
 
-      getAuditLog().then(res => res?.data && setLogs(res.data)).catch(() => {});
-      getPerformance().then(res => res?.data && setPerf(res.data)).catch(() => {});
+      // Nhóm Ưu tiên 2: Chạy song song ngầm (Background)
+      getAuditLog().then(resL => {
+        if (resL?.data) setLogs(resL.data);
+      }).catch(err => console.error("Lỗi tải Nhật ký:", err));
+
+      getPerformance().then(resEf => {
+        if (resEf?.data) setPerf(resEf.data);
+      }).catch(err => console.error("Lỗi tải Hiệu suất:", err));
+
+      // Lấy lịch sử NAV (nếu Backend đã có hàm này)
+      if (typeof getNavHistory === 'function') {
+        getNavHistory(20).then(res => {
+          if(res?.data) setNavHistory(res.data);
+        }).catch(() => {});
+      }
+
     } catch (error) {
-      console.error("Lỗi kết nối Backend:", error);
-      setLoading(false); // Lỗi cũng phải tắt xoay để người dùng biết
+      console.error("LỖI KẾT NỐI BACKEND:", error);
+      setLoading(false); 
     }
   };
 
   /**
-   * 2. Effect khởi tạo: Chạy 1 lần duy nhất khi mở trang
-   * Sau đó tự động làm mới dữ liệu mỗi 30 giây một lần.
+   * 2. Effect khởi tạo: Chạy 1 lần duy nhất và lập lịch làm mới 30s
    */
   useEffect(() => {
     fetchAllData();
@@ -216,37 +225,48 @@ export default function Dashboard() {
   }, []);
 
   /**
-   * 3. Effect Biểu đồ: Tải lại dữ liệu biểu đồ mỗi khi thay đổi:
-   * - Khoảng thời gian (1m, 3m, 1y)
-   * - Danh sách mã so sánh
-   * - Khi dữ liệu Portfolio chính được cập nhật
+   * 3. Effect Biểu đồ: Xử lý dứt điểm lỗi xoay tròn
    */
   useEffect(() => {
     const fetchChart = async () => {
       try {
-        // Lọc danh sách mã cần gọi API (Bỏ qua Portfolio vì lấy từ dữ liệu nội bộ)
+        console.log("--- ĐANG TẢI DỮ LIỆU BIỂU ĐỒ ---");
+        
+        // Lọc danh sách mã cần gọi (trừ Portfolio)
         const apiTargets = selectedComparisons.filter(t => t !== 'PORTFOLIO');
         
-        // Nếu không chọn mã nào, mặc định lấy VNINDEX để giữ khung biểu đồ
+        // Luôn đảm bảo có ít nhất 1 mã để lấy mốc thời gian
         const effectiveTargets = apiTargets.length > 0 ? apiTargets : ['VNINDEX'];
 
         const requests = effectiveTargets.map(ticker => getHistoricalData(ticker, chartRange));
         const responses = await Promise.all(requests);
 
+        // Chuẩn hóa dữ liệu qua BLOCK II
         const finalData = normalizeData(responses, effectiveTargets);
-        setChartData(finalData);
+        
+        if (finalData && finalData.length > 0) {
+          setChartData(finalData);
+          console.log(`DEBUG: Đã vẽ biểu đồ với ${finalData.length} điểm dữ liệu`);
+        } else {
+          // NẾU RỖNG: Set mảng có dữ liệu mồi để thoát vòng xoay Loading
+          console.log("WARNING: Dữ liệu rỗng, thoát xoay loading");
+          setChartData([{ date: 'N/A', VNINDEX: 0 }]);
+        }
       } catch (error) {
-        console.error("Lỗi fetch dữ liệu biểu đồ:", error);
+        console.error("LỖI FETCH BIỂU ĐỒ:", error);
+        // Lỗi cũng phải thoát xoay
+        setChartData([{ date: 'Lỗi', VNINDEX: 0 }]);
       }
     };
 
-    // Chỉ chạy fetchChart nếu đã có dữ liệu Portfolio cơ bản
+    // Chỉ gọi fetchChart khi Dashboard đã có dữ liệu Portfolio
     if (data) {
       fetchChart();
     }
   }, [selectedComparisons, chartRange, data]);
 
-  {/*// --- KẾT THÚC BLOCK III ---*/}
+  // --- KẾT THÚC BLOCK III ---
+  
   {/* ========================================================================================= */}
   {/* BLOCK IV: HÀM XỬ LÝ SỰ KIỆN (MUA, BÁN, NẠP, RÚT, HOÀN TÁC) */}
   {/* ========================================================================================= */}

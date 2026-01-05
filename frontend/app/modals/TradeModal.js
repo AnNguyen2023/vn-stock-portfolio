@@ -31,8 +31,14 @@ export default function TradeModal({
               <label className="text-[10px] font-black text-slate-400 uppercase tracking-widest ml-1 mb-2 block">Ghi chú lệnh mua</label>
               <textarea className="w-full p-3 bg-slate-50 border border-slate-100 rounded-2xl text-sm font-medium outline-none focus:ring-4 focus:ring-rose-100 min-h-[80px] resize-none" value={buyForm.note} onChange={(e) => setBuyForm({...buyForm, note: e.target.value})} />
             </div>
+            {/* Sửa lại phần hiển thị Thành tiền trong Modal Mua */}
             <div className="p-4 bg-rose-50/50 rounded-2xl border border-rose-100 text-lg font-black text-rose-700 text-center">
-               Tạm tính: { ( (parseInt(buyForm.volume.replace(/,/g, '')) || 0) * (parseFloat(buyForm.price.toString().replace(/,/g, '')) || 0) * 1.0015 ).toLocaleString() } <span className="text-xs">VND</span>
+              Tạm tính: {(() => {
+                // Ép kiểu về String trước khi replace để không bao giờ lỗi
+                const vol = parseInt(String(buyForm.volume || '0').replace(/,/g, '')) || 0;
+                const prc = parseFloat(String(buyForm.price || '0').replace(/,/g, '')) || 0;
+                return (vol * prc * (1 + 0.0015)).toLocaleString('en-US');
+              })()} <span className="text-xs">VND</span>
             </div>
             <div className="flex gap-3 pt-2">
               <button type="button" onClick={closeModals} className="flex-1 py-4 bg-slate-100 text-slate-500 font-black rounded-2xl text-xs uppercase hover:bg-slate-200">Hủy</button>
@@ -65,9 +71,15 @@ export default function TradeModal({
               <label className="text-[10px] font-black text-slate-400 uppercase tracking-widest ml-1 mb-2 block">Ghi chú lệnh bán</label>
               <textarea className="w-full p-3 bg-slate-50 border border-slate-100 rounded-2xl text-sm font-medium outline-none focus:ring-4 focus:ring-emerald-100 min-h-[80px] resize-none" value={sellForm.note} onChange={(e) => setSellForm({...sellForm, note: e.target.value})} />
             </div>
+            {/* Sửa lại phần hiển thị Thực nhận trong Modal Bán */}
             <div className="p-4 bg-emerald-50/50 rounded-2xl border border-emerald-100 text-lg font-black text-emerald-700 text-center">
-               Thực nhận: { ( (parseInt(sellForm.volume.replace(/,/g, '')) || 0) * (parseFloat(sellForm.price.toString().replace(/,/g, '')) || 0) * 0.9975 ).toLocaleString() } <span className="text-xs">VND</span>
-            </div>
+              Thực nhận: {(() => {
+                // Ép kiểu về String trước khi replace để không bao giờ lỗi
+                const vol = parseInt(String(sellForm.volume || '0').replace(/,/g, '')) || 0;
+                const prc = parseFloat(String(sellForm.price || '0').replace(/,/g, '')) || 0;
+                return (vol * prc * (1 - 0.0025)).toLocaleString('en-US');
+              })()} <span className="text-xs">VND</span>
+            </div>            
             <div className="flex gap-3 pt-2">
               <button type="button" onClick={closeModals} className="flex-1 py-4 bg-slate-100 text-slate-500 font-black rounded-2xl text-xs uppercase hover:bg-slate-200">Hủy</button>
               <button type="submit" className="flex-1 py-4 bg-emerald-500 text-white font-black rounded-2xl text-xs uppercase shadow-lg shadow-emerald-100 active:scale-95 transition-all">Xác nhận bán</button>

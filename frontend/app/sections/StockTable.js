@@ -17,7 +17,9 @@ export default function StockTable({ data, buyForm, setBuyForm, setSellForm, set
         <table className="w-full text-left border-collapse">
           <thead className="bg-slate-50/50 text-slate-500 text-[13px] uppercase font-bold tracking-[0.12em] border-b border-slate-100">
             <tr>
-              <th className="p-4 pl-6">Mã CK</th><th className="p-4 text-right">SL</th><th className="p-4 text-right">Giá TB</th><th className="p-4 text-right">Giá TT</th><th className="p-4 text-right">Giá trị</th><th className="p-4 text-right">Lãi/Lỗ</th><th className="p-4 text-center w-32">Tỷ trọng</th><th className="p-4 text-right">Hôm nay</th><th className="p-4 text-center">Thao tác</th>
+              <th className="p-4 pl-6">Mã CK</th><th className="p-4 text-right">SL</th><th className="p-4 text-right">Giá TB</th><th className="p-4 text-right">Giá TT</th><th className="p-4 text-right">Giá trị</th><th className="p-4 text-right">Lãi/Lỗ</th><th className="p-4 text-center w-32">Tỷ trọng</th>
+              <th className="p-4 text-right">Hôm nay</th>
+              <th className="p-4 text-center">Thao tác</th>
             </tr>
           </thead>
           <tbody className="divide-y divide-slate-100">
@@ -56,7 +58,7 @@ export default function StockTable({ data, buyForm, setBuyForm, setSellForm, set
                   </td>
                   {/* CỘT HÔM NAY: CŨNG DÙNG STATUS BADGE CHO GỌN */}
                   <td className="p-4 text-right">
-                    <StatusBadge value={(Math.random() * 3).toFixed(2)} />
+                    <StatusBadge value={s.today_change_percent.toFixed(2)} showIcon={true} />
                   </td>
 
                   <td className="p-4">
@@ -72,7 +74,7 @@ export default function StockTable({ data, buyForm, setBuyForm, setSellForm, set
         </table>
       </div>
       <div className="bg-white p-5 flex justify-between items-center border-t border-slate-200">
-        <span className="text-slate-600 text-[15px] font-normal ml-2">Tổng giá trị danh mục</span>
+        <span className="text-slate-700 text-[20px] font-medium tracking-wide ml-2">Tổng giá trị danh mục</span>
         <div className="flex items-baseline gap-1.5 mr-4"><span className="text-xl font-bold text-slate-900 tracking-tight">{Math.floor(data?.total_stock_value || 0).toLocaleString('en-US')}</span><span className="text-base font-semibold text-slate-500 lowercase">vnd</span></div>
       </div>
     </div>

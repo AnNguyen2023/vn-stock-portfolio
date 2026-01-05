@@ -188,3 +188,17 @@ frontend/
 │   │   ├── UndoModal.js     (Xác nhận Undo)
 │   │   └── NoteModal.js     (Sửa ghi chú)
 │   └── page.js              <-- File chính (Lúc này chỉ còn ~100 dòng)
+
+
+code
+Text
+backend/
+├── main.py             <-- Chỉ giữ lại phần khởi tạo App & Middleware
+├── routers/            <-- Thư mục chứa các "phòng ban"
+│   ├── trading.py      (Lo việc: Mua, Bán, Hoàn tác)
+│   ├── portfolio.py    (Lo việc: Tổng NAV, Hiệu suất, Danh mục)
+│   ├── market.py       (Lo việc: Biểu đồ, Lấy dữ liệu VNINDEX)
+│   └── logs.py         (Lo việc: Nhật ký dòng tiền, Khớp lệnh)
+├── models.py           (Giữ nguyên: Cấu trúc Database)
+├── schemas.py          (Giữ nguyên: Định dạng dữ liệu)
+└── crawler.py          (Giữ nguyên: Cỗ máy nhặt giá)
