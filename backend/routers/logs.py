@@ -13,24 +13,83 @@ def get_db():
     finally:
         db.close()
 
+"""
+routers/logs.py - API endpoints cho nhật ký giao dịch
+"""
+from fastapi import APIRouter, Depends
+from sqlalchemy.orm import Session
+from database import get_db
+import models
+
+# QUAN TRỌNG: Dùng APIRouter thay vì app
+router = APIRouter()
+
 @router.get("/logs")
 def get_audit_log(db: Session = Depends(get_db)):
+    """
+    Trả về timeline nhật ký tổng hợp: Nạp/Rút/Mua/Bán
+    """
+    # 1. Lấy lịch sử nạp/rút/lãi
     cash = db.query(models.CashFlow).all()
+    
+    # 2. Lấy lịch sử mua/bán
     stocks = db.query(models.StockTransaction).all()
+    
+    # 3. Gộp lại thành một danh sách nhật ký duy nhất
     logs = []
+    
     for c in cash:
         logs.append({
-            "id": c.id, "date": c.created_at, "category": "CASH", "note": "",
-            "type": c.type.value if hasattr(c.type, 'value') else str(c.type),
-            "content": f"{c.description}: {int(c.amount):,}"
+            "date": c.created_at.isoformat(),  # Convert datetime → string
+            "type": c.type.value,
+            "content": f"{c.description}: {int(c.amount):,} VND",
+            "category": "CASH"
         })
+    
     for s in stocks:
         logs.append({
-            "id": s.id, "date": s.transaction_date, "category": "STOCK", "note": s.note or "",
-            "type": s.type.value if hasattr(s.type, 'value') else str(s.type),
-            "content": f"{s.type.value} {int(s.volume):,} {s.ticker} giá {int(s.price):,}"
+            "date": s.transaction_date.isoformat(),  # Convert datetime → string
+            "type": s.type.value,
+            "content": f"{s.type.value} {int(s.volume):,} {s.ticker} @ {int(s.price):,}đ",
+            "category": "STOCK"
         })
+    
+    # 4. Sắp xếp theo thời gian mới nhất lên đầu
     logs.sort(key=lambda x: x['date'], reverse=True)
+    
+    return logs
+
+    """
+    Trả về timeline nhật ký tổng hợp: Nạp/Rút/Mua/Bán
+    """
+    # 1. Lấy lịch sử nạp/rút/lãi
+    cash = db.query(models.CashFlow).all()
+    
+    # 2. Lấy lịch sử mua/bán
+    stocks = db.query(models.StockTransaction).all()
+    
+    # 3. Gộp lại thành một danh sách nhật ký duy nhất
+    logs = []
+    
+    for c in cash:
+        logs.append({
+            "date": c.created_at.isoformat(),  # ← FIX: Convert datetime sang string
+            "type": c.type.value,
+            "content": f"{c.description}: {int(c.amount):,} VND",
+            "category": "CASH"
+        })
+    
+    for s in stocks:
+        logs.append({
+            "date": s.transaction_date.isoformat(),  # ← FIX: Convert datetime sang string
+            "type": s.type.value,
+            "content": f"{s.type.value} {int(s.volume):,} {s.ticker} @ {int(s.price):,}đ",
+            "category": "STOCK"
+        })
+    
+    # 4. Sắp xếp theo thời gian mới nhất lên đầu
+    logs.sort(key=lambda x: x['date'], reverse=True)
+    
     return logs
 
 @router.post("/update-note")

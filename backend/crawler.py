@@ -1,85 +1,100 @@
-import os
-import time
+"""
+crawler.py - Module lấy dữ liệu giá cổ phiếu & VNINDEX từ vnstock3
+"""
+from vnstock import Vnstock, Trading
+from datetime import datetime, timedelta
 import redis
 import json
-import requests
-from datetime import datetime, timedelta, date
-from typing import Dict, List, Any, Optional
-from decimal import Decimal
 
-# Kết nối Redis
-REDIS_URL = os.getenv("REDIS_URL", "redis://redis:6379/0")
-r = redis.from_url(REDIS_URL, decode_responses=True)
+# --- CẤU HÌNH REDIS CACHE ---
+try:
+    redis_client = redis.Redis(host='localhost', port=6379, db=0, decode_responses=True)
+    redis_client.ping()
+    REDIS_AVAILABLE = True
+except:
+    REDIS_AVAILABLE = False
+    print("[CRAWLER] Redis không khả dụng, chạy không cache")
 
-def _safe_float(x: Any, default: float = 0.0) -> float:
-    try: return float(x) if x is not None else default
-    except: return default
+CACHE_DURATION = 30  # giây
 
-def get_current_prices(tickers: List[str]) -> Dict[str, Any]:
-    """Lấy giá Real-time từ VPS (Vẫn giữ vì nguồn này cực nhanh)"""
-    if not tickers: return {}
-    output = {}
-    missing = []
-    for t in tickers:
-        t_up = t.upper().strip()
-        try:
-            cached = r.get(f"price:{t_up}")
-            if cached: output[t_up] = json.loads(cached)
-            else: missing.append(t_up)
-        except: missing.append(t_up)
-
-    if missing:
-        try:
-            url = f"https://bgapidatafeed.vps.com.vn/getliststockdata/{','.join(missing)}"
-            res = requests.get(url, timeout=3)
-            if res.status_code == 200:
-                for item in res.json():
-                    sym = item.get('sym')
-                    last_p = float(item.get('lastPrice', 0)) * 1000
-                    ref_p = float(item.get('re', 0)) * 1000
-                    price_package = {"price": last_p if last_p > 0 else ref_p, "ref": ref_p}
-                    r.set(f"price:{sym}", json.dumps(price_package), ex=30)
-                    output[sym] = price_package
-        except: pass
-    return {t.upper(): output.get(t.upper(), {"price": 0, "ref": 0}) for t in tickers}
-
-def get_historical_prices(ticker: str, period: str = "1m"):
+def get_current_prices(tickers: list) -> dict:
     """
-    Lấy giá lịch sử CHUẨN từ VPS Chart API.
-    Bản này không dùng thư viện ngoài, không bị treo chờ xác nhận license.
+    Lấy giá hiện tại của danh sách mã cổ phiếu qua vnstock3
+    Sử dụng Redis Cache để tăng tốc độ phản hồi.
     """
-    symbol = ticker.upper().strip()
-    days_map = {"1m": 30, "3m": 90, "6m": 180, "1y": 365}
-    days = days_map.get(period, 30)
+    if not tickers:
+        return {}
     
-    # 1. Tính toán timestamp cho VPS (Epoch time)
-    end_t = int(time.time())
-    start_t = int((datetime.now() - timedelta(days=days)).timestamp())
-
+    result = {}
+    
+    # 1. KIỂM TRA CACHE
+    if REDIS_AVAILABLE:
+        cache_key = "stock_prices"
+        cached_data = redis_client.get(cache_key)
+        
+        if cached_data:
+            all_prices = json.loads(cached_data)
+            # Trả về giá các mã trong cache nếu đủ
+            if all(t in all_prices for t in tickers):
+                return {t: all_prices[t] for t in tickers}
+    
+    # 2. GỌI VNSTOCK3 NẾU CACHE KHÔNG CÓ
     try:
-        # VPS phân biệt link lấy Index (VNINDEX) và Stock (mã CP)
-        type_path = "index" if symbol == "VNINDEX" else "stock"
-        url = f"https://bgapidatafeed.vps.com.vn/getchartdata/{type_path}/{symbol}"
+        # Sử dụng price_board để lấy giá real-time nhiều mã cùng lúc
+        df = Trading(source='VCI').price_board(tickers)
         
-        # Gọi API với timeout 5s
-        res = requests.get(url, params={"resolution": "1D", "from": start_t, "to": end_t}, timeout=5)
-        
-        if res.status_code == 200:
-            d = res.json()
-            # VPS trả về: t (time), c (close), o (open), h (high), l (low)
-            if 't' in d and 'c' in d:
-                result = []
-                for i in range(len(d['t'])):
-                    date_str = datetime.fromtimestamp(d['t'][i]).strftime('%Y-%m-%d')
-                    result.append({
-                        "date": date_str, 
-                        "close": float(d['c'][i])
-                    })
-                print(f"--- [CRAWLER] Da lay {len(result)} ngay cho {symbol} tu VPS ---")
-                return result
-        
-        print(f"--- [CRAWLER] VPS khong nhan ma {symbol} ---")
+        if df is not None and not df.empty:
+            for _, row in df.iterrows():
+                symbol = row.get('ticker') or row.get('symbol')
+                # Lấy giá khớp lệnh hoặc giá tham chiếu
+                price = row.get('lastPrice') or row.get('referencePrice') or 0
+                result[symbol] = float(price) * 1000  # Chuyển sang VND
+            
+            # Lưu vào Redis cache
+            if REDIS_AVAILABLE:
+                redis_client.setex(cache_key, CACHE_DURATION, json.dumps(result))
+                
     except Exception as e:
-        print(f"--- [CRAWLER LOI] {symbol}: {e} ---")
+        print(f"[CRAWLER] Lỗi lấy giá từ vnstock3: {e}")
+        # Fallback: Trả về giá 0 cho các mã lỗi
+        result = {t: 0 for t in tickers}
     
-    return []
+    return result
+
+def get_historical_prices(ticker: str, period: str = "1m") -> list:
+    """
+    Lấy dữ liệu lịch sử bằng vnstock3
+    """
+    try:
+        end_date = datetime.now().strftime('%Y-%m-%d')
+        
+        # Tính start_date
+        days_map = {"1m": 30, "3m": 90, "6m": 180, "1y": 365}
+        start_date = (datetime.now() - timedelta(days=days_map.get(period, 30))).strftime('%Y-%m-%d')
+        
+        # VNSTOCK3 DÙNG .stock() CHO CẢ CHỈ SỐ VÀ CỔ PHIẾU
+        stock = Vnstock().stock(symbol=ticker, source='VCI')
+        df = stock.quote.history(start=start_date, end=end_date, interval='1D')
+        
+        if df is not None and not df.empty:
+            df = df.reset_index()
+            result = []
+            
+            for _, row in df.iterrows():
+                # vnstock3 dùng cột 'time' hoặc 'date'
+                time_val = row.get('time') or row.get('date')
+                close_val = row.get('close') or row.get('Close')
+                
+                result.append({
+                    "date": time_val.strftime('%Y-%m-%d') if hasattr(time_val, 'strftime') else str(time_val),
+                    "close": float(close_val)
+                })
+            
+            return result
+        else:
+            print(f"[CRAWLER] Không có dữ liệu cho {ticker}")
+            return []
+            
+    except Exception as e:
+        print(f"[CRAWLER] Lỗi lấy lịch sử {ticker}: {e}")
+        return []

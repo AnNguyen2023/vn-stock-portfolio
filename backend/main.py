@@ -63,7 +63,7 @@ async def general_exception_handler(request: Request, exc: Exception):
 
 app.include_router(trading.router)    # Đã chứa: Mua, Bán, Undo
 app.include_router(portfolio.router)  # Đã chứa: Portfolio, Performance, Nav-history, Reset
-app.include_router(logs.router)       # Đã chứa: Logs, Update-note, History-summary
+app.include_router(logs.router, tags=["Logs"])# Đã chứa: Logs, Update-note, History-summary
 app.include_router(market.router)     # Đã chứa: Historical (Chart)
 
 # =========================================================================================
