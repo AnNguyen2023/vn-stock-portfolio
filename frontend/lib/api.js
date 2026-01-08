@@ -100,6 +100,12 @@ export const getHistoricalData = async (ticker, period = '1m') => {
 export const getNavHistory = async (limit = 10) => {
     return axios.get(`${API_URL}/nav-history`, { params: { limit } });
 };
+// Chart Growth: lấy series tăng trưởng của DANH MỤC (PORTFOLIO)
+export const getChartGrowth = (period = "1m") =>
+  axios.get(`${API_URL}/chart-growth`, {
+    params: { period },
+  });
+
 
 // API Reset dữ liệu (Dùng khi cần dọn sạch hệ thống)
 export const resetData = async () => {

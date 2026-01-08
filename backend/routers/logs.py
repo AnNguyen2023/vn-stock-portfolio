@@ -1,18 +1,3 @@
-from fastapi import APIRouter, Depends, HTTPException
-from sqlalchemy.orm import Session
-from sqlalchemy import cast, Date, desc
-import models
-from datetime import datetime
-
-router = APIRouter(tags=["Audit Logs"])
-
-def get_db():
-    db = models.SessionLocal()
-    try:
-        yield db
-    finally:
-        db.close()
-
 """
 routers/logs.py - API endpoints cho nhật ký giao dịch
 """
@@ -59,38 +44,6 @@ def get_audit_log(db: Session = Depends(get_db)):
     
     return logs
 
-    """
-    Trả về timeline nhật ký tổng hợp: Nạp/Rút/Mua/Bán
-    """
-    # 1. Lấy lịch sử nạp/rút/lãi
-    cash = db.query(models.CashFlow).all()
-    
-    # 2. Lấy lịch sử mua/bán
-    stocks = db.query(models.StockTransaction).all()
-    
-    # 3. Gộp lại thành một danh sách nhật ký duy nhất
-    logs = []
-    
-    for c in cash:
-        logs.append({
-            "date": c.created_at.isoformat(),  # ← FIX: Convert datetime sang string
-            "type": c.type.value,
-            "content": f"{c.description}: {int(c.amount):,} VND",
-            "category": "CASH"
-        })
-    
-    for s in stocks:
-        logs.append({
-            "date": s.transaction_date.isoformat(),  # ← FIX: Convert datetime sang string
-            "type": s.type.value,
-            "content": f"{s.type.value} {int(s.volume):,} {s.ticker} @ {int(s.price):,}đ",
-            "category": "STOCK"
-        })
-    
-    # 4. Sắp xếp theo thời gian mới nhất lên đầu
-    logs.sort(key=lambda x: x['date'], reverse=True)
-    
-    return logs
 
 @router.post("/update-note")
 def update_note(tx_id: int, note: str, db: Session = Depends(get_db)):

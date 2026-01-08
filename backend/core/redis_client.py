@@ -1,0 +1,104 @@
+# core/redis_client.py
+from __future__ import annotations
+
+import os
+import time
+import json
+from typing import Any, Optional
+import redis
+from rq import Queue
+
+REDIS_URL = os.getenv("REDIS_URL", "redis://localhost:6379/0")
+
+_redis: Optional[redis.Redis] = None
+_queue: Optional[Queue] = None
+
+_last_check_ts: float = 0.0
+_retry_every_sec: int = 5  # redis down thì 5s thử lại
+
+
+def init_redis():
+    """Backward-compatible: giữ tên cũ cho main.py."""
+    return get_redis()
+
+
+def get_redis() -> Optional[redis.Redis]:
+    """
+    Trả về redis client nếu kết nối được, None nếu không.
+    Có retry theo thời gian để redis bật lại thì app tự reconnect (không cần restart).
+    """
+    global _redis, _queue, _last_check_ts
+
+    now = time.time()
+
+    # nếu đã có connection OK thì trả luôn
+    if _redis is not None:
+        return _redis
+
+    # nếu vừa fail gần đây thì chưa thử lại
+    if now - _last_check_ts < _retry_every_sec:
+        return None
+
+    _last_check_ts = now
+
+    try:
+        r = redis.from_url(REDIS_URL, decode_responses=True)
+        r.ping()
+        _redis = r
+        _queue = Queue(connection=r)
+        print("✅ Redis kết nối thành công")
+        return _redis
+    except Exception as e:
+        _redis = None
+        _queue = None
+        print(f"[REDIS] ⚠️ Không kết nối được, chạy không cache: {e}")
+        return None
+
+
+def get_queue() -> Optional[Queue]:
+    get_redis()
+    return _queue
+
+
+def safe_cache_delete(*keys: str) -> None:
+    r = get_redis()
+    if not r or not keys:
+        return
+    try:
+        r.delete(*keys)
+    except Exception:
+        pass
+
+
+def safe_flushall() -> None:
+    r = get_redis()
+    if not r:
+        return
+    try:
+        r.flushdb()
+    except Exception:
+        pass
+
+def cache_get(key: str):
+    r = get_redis()
+    if not r:
+        return None
+    try:
+        v = r.get(key)
+        return json.loads(v) if v else None
+    except Exception:
+        return None
+
+def cache_set(key: str, value: Any, ttl: int = 300, ex: Optional[int] = None) -> None:
+    """ttl hoặc ex (giống redis-py). ưu tiên ex nếu có."""
+    r = get_redis()
+    if not r:
+        return
+    try:
+        seconds = int(ex) if ex is not None else int(ttl)
+        r.setex(key, seconds, json.dumps(value, default=str))
+    except Exception:
+        pass
+
+def cache_delete(*keys: str) -> None:
+    safe_cache_delete(*keys)

@@ -1,40 +1,35 @@
+# routers/trading.py
 from fastapi import APIRouter, Depends, HTTPException
 from sqlalchemy.orm import Session
 from decimal import Decimal
 from datetime import datetime
-import models
-import schemas
-import crawler
+
 from sqlalchemy import desc
 
-# Khởi tạo router cho phòng ban Trading
+import models
+import schemas
+from core.db import get_db
+from core.cache import invalidate_dashboard_cache
+
 router = APIRouter(
     tags=["Trading"],
     responses={404: {"description": "Not found"}},
 )
 
-# Hàm lấy DB (Tèo em sẽ hướng dẫn anh cách dùng chung ở main.py sau)
-def get_db():
-    db = models.SessionLocal()
-    try:
-        yield db
-    finally:
-        db.close()
-
 def raise_error(message: str, status_code: int = 400):
     raise HTTPException(status_code=status_code, detail=message)
 
-# --- API MUA CỔ PHIẾU ---
+
 @router.post("/buy")
 def buy_stock(req: schemas.BuyStockRequest, db: Session = Depends(get_db)):
     ticker = req.ticker.upper()
     volume = Decimal(str(req.volume))
-    price_vnd = Decimal(str(req.price)) 
-    
+    price_vnd = Decimal(str(req.price))
+
     total_value = volume * price_vnd
     fee = total_value * Decimal(str(req.fee_rate))
     total_cost = total_value + fee
-    
+
     asset = db.query(models.AssetSummary).first()
     if not asset or asset.cash_balance < total_cost:
         raise_error(f"Thiếu {float(total_cost - asset.cash_balance):,.0f} VND")
@@ -48,17 +43,26 @@ def buy_stock(req: schemas.BuyStockRequest, db: Session = Depends(get_db)):
         holding.available_volume = new_vol
         holding.liquidated_at = None
     else:
-        holding = models.TickerHolding(ticker=ticker, total_volume=volume, available_volume=volume, average_price=(total_cost / volume))
+        holding = models.TickerHolding(
+            ticker=ticker,
+            total_volume=volume,
+            available_volume=volume,
+            average_price=(total_cost / volume),
+        )
         db.add(holding)
 
     asset.cash_balance -= total_cost
     db.add(models.CashFlow(type=models.CashFlowType.WITHDRAW, amount=total_cost, description=f"Mua {int(volume):,} {ticker}"))
     db.add(models.StockTransaction(ticker=ticker, type=models.TransactionType.BUY, volume=volume, price=price_vnd, fee=fee, total_value=total_cost, note=req.note))
-    
+
     db.commit()
+
+    # clear cache dashboard
+    invalidate_dashboard_cache()
+
     return {"message": f"Đã khớp lệnh mua {int(volume)} {ticker}"}
 
-# --- API BÁN CỔ PHIẾU ---
+
 @router.post("/sell")
 def sell_stock(req: schemas.SellStockRequest, db: Session = Depends(get_db)):
     ticker = req.ticker.upper()
@@ -67,14 +71,14 @@ def sell_stock(req: schemas.SellStockRequest, db: Session = Depends(get_db)):
         raise_error(f"Không đủ {ticker} để bán")
 
     volume_to_sell = Decimal(str(req.volume))
-    price_vnd = Decimal(str(req.price)) 
-    
+    price_vnd = Decimal(str(req.price))
+
     gross_revenue = volume_to_sell * price_vnd
     fee = gross_revenue * Decimal(str(req.fee_rate))
     tax = gross_revenue * Decimal(str(req.tax_rate))
-    net_proceeds = gross_revenue - fee - tax 
+    net_proceeds = gross_revenue - fee - tax
 
-    cost_basis = volume_to_sell * holding.average_price 
+    cost_basis = volume_to_sell * holding.average_price
     profit = net_proceeds - cost_basis
 
     holding.total_volume -= volume_to_sell
@@ -90,12 +94,20 @@ def sell_stock(req: schemas.SellStockRequest, db: Session = Depends(get_db)):
     db.add(models.RealizedProfit(ticker=ticker, volume=volume_to_sell, buy_avg_price=holding.average_price if holding.total_volume > 0 else (cost_basis/volume_to_sell), sell_price=price_vnd, net_profit=profit))
 
     db.commit()
+
+    invalidate_dashboard_cache()
+
     return {"message": f"Đã bán {int(volume_to_sell)} {ticker}"}
 
-# --- API HOÀN TÁC (UNDO) ---
+
 @router.post("/undo-last-buy")
 def undo_last_buy(db: Session = Depends(get_db)):
-    last_tx = db.query(models.StockTransaction).filter(models.StockTransaction.type == models.TransactionType.BUY).order_by(desc(models.StockTransaction.id)).first()
+    last_tx = (
+        db.query(models.StockTransaction)
+        .filter(models.StockTransaction.type == models.TransactionType.BUY)
+        .order_by(desc(models.StockTransaction.id))
+        .first()
+    )
     if not last_tx:
         raise_error("Không có gì để hoàn tác")
 
@@ -116,10 +128,20 @@ def undo_last_buy(db: Session = Depends(get_db)):
                 holding.available_volume = new_vol
                 holding.average_price = new_cost / new_vol
 
-        cash_log = db.query(models.CashFlow).filter(models.CashFlow.description.contains(last_tx.ticker)).order_by(desc(models.CashFlow.id)).first()
-        if cash_log: db.delete(cash_log)
+        cash_log = (
+            db.query(models.CashFlow)
+            .filter(models.CashFlow.description.contains(last_tx.ticker))
+            .order_by(desc(models.CashFlow.id))
+            .first()
+        )
+        if cash_log:
+            db.delete(cash_log)
+
         db.delete(last_tx)
         db.commit()
+
+        invalidate_dashboard_cache()
+
         return {"message": f"Đã hủy lệnh mua {last_tx.ticker}"}
     except Exception as e:
         db.rollback()
