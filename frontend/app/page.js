@@ -1,6 +1,6 @@
 "use client";
 
-import { useEffect, useState } from "react";
+import React, { useEffect, useState } from "react";
 import dynamic from "next/dynamic";
 import { RefreshCw, Wallet, TrendingUp, PieChart as PieChartIcon } from "lucide-react";
 import { Toaster, toast } from "sonner";
@@ -30,6 +30,7 @@ import {
   getPerformance,
   getHistoricalData,
   getChartGrowth,
+  getNavHistory,
   undoLastBuy,
   updateTransactionNote,
 } from "@/lib/api";
@@ -56,7 +57,7 @@ const normalizeData = (responses, stockTickers, chartTickers, portfolioSeries = 
   const portfolioMap = {};
   if (Array.isArray(portfolioSeries)) {
     portfolioSeries.forEach((p) => {
-      if (p?.date != null) portfolioMap[p.date] = p.close;
+      if (p?.date != null) portfolioMap[p.date] = p.PORTFOLIO;
     });
   }
 
@@ -88,7 +89,7 @@ const normalizeData = (responses, stockTickers, chartTickers, portfolioSeries = 
   // Merge ra chartData
   return baseData.map((item) => {
     const dateStr = item.date; // YYYY-MM-DD
-    const point = { date: dateStr.slice(5) }; // MM-DD
+    const point = { date: dateStr }; // Full date for tooltip calculation
 
     chartTickers.forEach((ticker) => {
       if (ticker === "PORTFOLIO") {
@@ -144,8 +145,8 @@ export default function Dashboard() {
   // 4) FORMS
   const [amount, setAmount] = useState("");
   const [description, setDescription] = useState("");
-  const [startDate, setStartDate] = useState("");
-  const [endDate, setEndDate] = useState("");
+  const [startDate, setStartDate] = useState(new Date(Date.now() - 7 * 24 * 60 * 60 * 1000).toLocaleDateString('en-CA'));
+  const [endDate, setEndDate] = useState(new Date().toLocaleDateString('en-CA'));
 
   const [buyForm, setBuyForm] = useState({
     ticker: "",
@@ -182,7 +183,7 @@ export default function Dashboard() {
   // -----------------------------
   // Fetch Dashboard Core Data
   // -----------------------------
-  const fetchAllData = async () => {
+  const fetchAllData = React.useCallback(async () => {
     try {
       const resP = await getPortfolio();
       if (resP?.data) {
@@ -204,11 +205,8 @@ export default function Dashboard() {
         })
         .catch((err) => console.error("Lỗi tải Hiệu suất:", err));
 
-      // Nếu sau này anh có getNavHistory trong api.js thì tự chạy
-      // eslint-disable-next-line no-undef
       if (typeof getNavHistory === "function") {
-        // eslint-disable-next-line no-undef
-        getNavHistory(20)
+        getNavHistory(startDate, endDate)
           .then((res) => {
             if (res?.data) setNavHistory(res.data);
           })
@@ -218,23 +216,17 @@ export default function Dashboard() {
       console.error("LỖI KẾT NỐI BACKEND:", error);
       setLoading(false);
     }
-  };
+  }, [startDate, endDate]);
 
   useEffect(() => {
     fetchAllData();
     const interval = setInterval(fetchAllData, 10000);
     return () => clearInterval(interval);
-    // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, []);
+  }, [fetchAllData]);
 
-  // -----------------------------
-  // Fetch Chart Data (Option 1)
-  // -----------------------------
-  const fetchChart = async () => {
+  const fetchChart = React.useCallback(async () => {
     try {
       const wantPortfolio = selectedComparisons.includes("PORTFOLIO");
-
-      // 1) PORTFOLIO series từ /chart-growth
       let portfolioSeries = [];
       if (wantPortfolio) {
         try {
@@ -245,37 +237,22 @@ export default function Dashboard() {
           portfolioSeries = [];
         }
       }
-
-      // 2) Các mã cần gọi /historical (trừ PORTFOLIO)
       const stockTickers = selectedComparisons.filter((t) => t !== "PORTFOLIO");
-
-      // nếu user chỉ chọn PORTFOLIO mà series có data => không cần gọi historical
-      const effectiveStockTickers =
-        stockTickers.length > 0 ? stockTickers : portfolioSeries.length > 0 ? [] : ["VNINDEX"];
-
+      const effectiveStockTickers = stockTickers.length > 0 ? stockTickers : portfolioSeries.length > 0 ? [] : ["VNINDEX"];
       const responses = await Promise.all(
         effectiveStockTickers.map((ticker) => getHistoricalData(ticker, chartRange))
       );
-
-      // 3) Normalize + merge portfolio
-      const finalData = normalizeData(
-        responses,
-        effectiveStockTickers, // match responses order
-        selectedComparisons, // draw exact selected lines
-        portfolioSeries
-      );
-
+      const finalData = normalizeData(responses, effectiveStockTickers, selectedComparisons, portfolioSeries);
       setChartData(finalData?.length ? finalData : [{ date: "N/A", VNINDEX: 0, PORTFOLIO: 0 }]);
     } catch (error) {
       console.error("LỖI FETCH BIỂU ĐỒ:", error);
       setChartData([{ date: "Lỗi", VNINDEX: 0, PORTFOLIO: 0 }]);
     }
-  };
+  }, [chartRange, selectedComparisons]);
 
   useEffect(() => {
     fetchChart();
-    // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [chartRange, selectedComparisons.join("|")]);
+  }, [fetchChart]);
 
   // -----------------------------
   // Actions
@@ -437,8 +414,22 @@ export default function Dashboard() {
     }
     const res = await getHistorySummary(startDate, endDate);
     setHistoricalProfit(res.data);
+
+    // Đồng thời cập nhật luôn bảng NAV History theo khoảng ngày này
+    try {
+      const resNav = await getNavHistory(startDate, endDate);
+      if (resNav?.data) setNavHistory(resNav.data);
+    } catch (e) {
+      console.error("Lỗi cập nhật NAV History:", e);
+    }
+
     toast.success("Đã cập nhật dữ liệu đối soát.");
   };
+
+  useEffect(() => {
+    handleCalculateProfit();
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, []);
 
   const handleUpdateNote = async () => {
     try {
@@ -559,6 +550,7 @@ export default function Dashboard() {
                 selectedComparisons,
                 holdingTickers,
                 toggleComparison,
+                totalNav: data?.total_nav,
               }}
             />
           ) : (

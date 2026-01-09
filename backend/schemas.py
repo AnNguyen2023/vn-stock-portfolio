@@ -23,6 +23,12 @@ class BuyStockRequest(BaseModel):
             raise ValueError('Mã chứng khoán chỉ được chứa chữ cái và số')
         return v.upper()
 
+class WatchlistUpdate(BaseModel):
+    name: str = Field(..., min_length=1, max_length=50)
+
+class NoteUpdate(BaseModel):
+    note: str = Field(..., max_length=500)
+
 # --- WATCHLIST SCHEMAS ---
 
 class WatchlistTickerCreate(BaseModel):

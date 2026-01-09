@@ -84,8 +84,22 @@ def get_chart_growth(period: str = "1m", db: Session = Depends(get_db)):
 
 
 @router.get("/nav-history")
-def get_nav_history(limit: int = 20, db: Session = Depends(get_db)):
-    return nav_history(db, limit=limit)
+def get_nav_history(start_date: str | None = None, end_date: str | None = None, limit: int = 30, db: Session = Depends(get_db)):
+    from datetime import datetime
+    d_start = None
+    d_end = None
+    
+    def _parse_date(s):
+        if not s: return None
+        for fmt in ("%Y-%m-%d", "%d/%m/%Y"):
+            try: return datetime.strptime(s, fmt).date()
+            except: continue
+        return None
+
+    d_start = _parse_date(start_date)
+    d_end = _parse_date(end_date)
+        
+    return nav_history(db, start_date=d_start, end_date=d_end, limit=limit)
 
 
 @router.get("/ticker-lifetime-profit/{ticker}")

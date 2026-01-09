@@ -1,12 +1,13 @@
 """
 routers/logs.py - API endpoints cho nhật ký giao dịch
 """
-from fastapi import APIRouter, Depends
+from fastapi import APIRouter, Depends, HTTPException
 from sqlalchemy.orm import Session
 from sqlalchemy import cast, Date
 from datetime import datetime
-from database import get_db
+from core.db import get_db
 import models
+import schemas
 
 # QUAN TRỌNG: Dùng APIRouter thay vì app
 router = APIRouter()
@@ -35,9 +36,11 @@ def get_audit_log(db: Session = Depends(get_db)):
     
     for s in stocks:
         logs.append({
-            "date": s.transaction_date.isoformat(),  # Convert datetime → string
+            "id": s.id,
+            "date": s.transaction_date.isoformat(),
             "type": s.type.value,
             "content": f"{s.type.value} {int(s.volume):,} {s.ticker} @ {int(s.price):,}đ",
+            "note": s.note,
             "category": "STOCK"
         })
     
@@ -47,12 +50,12 @@ def get_audit_log(db: Session = Depends(get_db)):
     return logs
 
 
-@router.post("/update-note")
-def update_note(tx_id: int, note: str, db: Session = Depends(get_db)):
+@router.put("/logs/{tx_id}/note")
+def update_note(tx_id: int, req: schemas.NoteUpdate, db: Session = Depends(get_db)):
     transaction = db.query(models.StockTransaction).filter(models.StockTransaction.id == tx_id).first()
     if not transaction:
         raise HTTPException(status_code=404, detail="Không tìm thấy giao dịch")
-    transaction.note = note
+    transaction.note = req.note
     db.commit()
     return {"message": "Đã cập nhật ghi chú thành công"}
 

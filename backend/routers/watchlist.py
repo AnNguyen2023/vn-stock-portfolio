@@ -27,6 +27,23 @@ def create_watchlist(req: schemas.WatchlistCreate, db: Session = Depends(get_db)
     db.refresh(new_wl)
     return new_wl
 
+@router.put("/{id}", response_model=schemas.WatchlistSchema)
+def rename_watchlist(id: int, req: schemas.WatchlistUpdate, db: Session = Depends(get_db)):
+    """Đổi tên Watchlist"""
+    wl = db.query(models.Watchlist).filter(models.Watchlist.id == id).first()
+    if not wl:
+        raise HTTPException(status_code=404, detail="Không tìm thấy danh sách")
+    
+    # Kiểm tra xem tên mới đã tồn tại chưa (trừ chính nó)
+    exist = db.query(models.Watchlist).filter(models.Watchlist.name == req.name, models.Watchlist.id != id).first()
+    if exist:
+        raise HTTPException(status_code=400, detail="Tên danh sách đã tồn tại")
+    
+    wl.name = req.name
+    db.commit()
+    db.refresh(wl)
+    return wl
+
 @router.delete("/{id}")
 def delete_watchlist(id: int, db: Session = Depends(get_db)):
     """Xóa một Watchlist"""

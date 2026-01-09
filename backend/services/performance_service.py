@@ -62,10 +62,32 @@ def _net_cash_flow(db: Session, start: date, end: date | None = None) -> Decimal
             net -= _d(f.amount)
     return net
 
+def _get_flows_map(db: Session, start: date, end: date) -> Dict[date, Decimal]:
+    """Trả về map {date: net_flow} trong khoảng thời gian"""
+    flows = db.query(models.CashFlow).filter(
+        cast(models.CashFlow.created_at, Date) >= start,
+        cast(models.CashFlow.created_at, Date) <= end
+    ).all()
+    
+    res = {}
+    for f in flows:
+        d_key = f.created_at.date()
+        amt = _d(f.amount)
+        if f.type == models.CashFlowType.WITHDRAW:
+            amt = -amt
+        res[d_key] = res.get(d_key, Decimal("0")) + amt
+    return res
+
 
 def _calc_profit_pct(curr_nav: Decimal, old_nav: Decimal, net_flow: Decimal) -> Tuple[float, float]:
-    profit = curr_nav - (old_nav + net_flow)
-    denom = old_nav + net_flow
+    """
+    SSI Formula:
+    PnL = NAV_t - NAV_t-1 - NetFlow
+    ROR = PnL / (NAV_t-1 + Max(0, NetFlow))
+    """
+    profit = curr_nav - old_nav - net_flow
+    # SSI denominator: NAV_prev + Max(0, NetFlow)
+    denom = old_nav + max(Decimal("0"), net_flow)
     pct = (profit / denom * 100) if denom > 0 else Decimal("0")
     return _safe_float(profit, 0.0), _safe_float(pct, 0.0)
 
@@ -132,7 +154,7 @@ def calculate_twr_metrics(db: Session) -> Dict[str, Any]:
 
 def _growth_key_fn(*args, **kwargs) -> str:
     period = kwargs.get("period") or (args[1] if len(args) > 1 else "1m")
-    return f"chart_growth_{period}"
+    return f"chart_growth_v3_{period}"
 
 
 @cache(ttl=300, key_fn=_growth_key_fn)
@@ -142,77 +164,170 @@ def growth_series(db: Session, period: str = "1m") -> Dict[str, Any]:
     days = period_map.get(period, 30)
     start_date = end_date - timedelta(days=days)
 
-    # 1. Lấy dữ liệu Portfolio Snapshots
-    snaps = (
-        db.query(models.DailySnapshot)
-        .filter(models.DailySnapshot.date >= start_date)
-        .order_by(models.DailySnapshot.date)
-        .all()
-    )
+    # 1. Lấy dữ liệu Holdings (Bỏ qua Cash để tính "Pure Stock Performance")
+    holdings = db.query(models.TickerHolding).filter(models.TickerHolding.total_volume > 0).all()
 
-    if not snaps or len(snaps) < 2:
-        return {"portfolio": [], "message": "Chưa đủ dữ liệu lịch sử (cần ít nhất 2 ngày)"}
+    # List tickers
+    tickers = [h.ticker for h in holdings]
+    # Thêm VNINDEX vào list cần lấy giá
+    fetch_tickers = tickers + ["VNINDEX"]
 
-    # 2. Lấy dữ liệu benchmark VNINDEX
-    indices = (
+    # 2. Lấy lịch sử giá (HistoricalPrice)
+    raw_prices = (
         db.query(models.HistoricalPrice)
-        .filter(models.HistoricalPrice.ticker == "VNINDEX", models.HistoricalPrice.date >= start_date)
+        .filter(
+            models.HistoricalPrice.ticker.in_(fetch_tickers),
+            models.HistoricalPrice.date >= start_date
+        )
         .order_by(models.HistoricalPrice.date)
         .all()
     )
-    index_map = {idx.date: _d(idx.close_price) for idx in indices}
 
-    base_nav = _d(snaps[0].total_nav)
-    # Tìm giá trị VNINDEX tại ngày bắt đầu của snaps để làm mốc 0%
-    base_index = index_map.get(snaps[0].date)
-    
-    # Nếu ngày đầu của snaps không có VNINDEX, tìm ngày gần nhất trước đó hoặc sau đó
-    if base_index is None and indices:
-        base_index = _d(indices[0].close_price)
+    # Tổ chức map: price_map[date][ticker] = price
+    price_map: Dict[date, Dict[str, Decimal]] = {}
+    all_dates = set()
+
+    for p in raw_prices:
+        if p.date not in price_map:
+            price_map[p.date] = {}
+        price_map[p.date][p.ticker] = _d(p.close_price)
+        all_dates.add(p.date)
+
+    sorted_dates = sorted(list(all_dates))
+
+    if not sorted_dates:
+         return {"portfolio": [], "message": "Chưa có dữ liệu giá lịch sử."}
+
+    # 3. Tính toán "Stock Value" giả lập (Simulated Backcast)
+    # Coi danh mục như "1 Cổ phiếu tổng hợp"
+    # Giá trị "Cổ phiếu tổng hợp" tại ngày t = Sum(Volume_i * Price_i_t)
+    # Loại bỏ tiền mặt (Cash) ra khỏi tính toán để không bị "dampening" biến động.
 
     series: List[Dict[str, Any]] = []
-    for s in snaps:
-        # Tính % Portfolio Growth (TWR-like simplified)
-        s_nav = _d(s.total_nav)
-        net_flow = _net_cash_flow(db, start=snaps[0].date, end=s.date)
-        adjusted_base = base_nav + net_flow
-        p_growth = (s_nav - adjusted_base) / adjusted_base * 100 if adjusted_base > 0 else Decimal("0")
+    
+    # Base values (ngày đầu tiên)
+    date_0 = sorted_dates[0]
+    prices_0 = price_map[date_0]
+    
+    stock_val_0 = Decimal("0")
+    for h in holdings:
+        p = prices_0.get(h.ticker, Decimal("0"))
+        stock_val_0 += _d(h.total_volume) * p
+    
+    # Để hiển thị VNIndex tương quan
+    vnindex_0 = prices_0.get("VNINDEX", Decimal("0"))
 
-        # Tính % VNINDEX Growth
-        curr_idx = index_map.get(s.date)
-        v_growth = (curr_idx - base_index) / base_index * 100 if (base_index and curr_idx) else Decimal("0")
+    # Loop tính growth
+    for day in sorted_dates:
+        day_prices = price_map[day]
+        
+        # Calculate Daily Stock Value
+        stock_val_t = Decimal("0")
+        for h in holdings:
+            p = day_prices.get(h.ticker, Decimal("0")) # TODO: Forward fill if missing
+            stock_val_t += _d(h.total_volume) * p
+            
+        vnindex_t = day_prices.get("VNINDEX", Decimal("0"))
+
+        # Calculate Growth % (Pure Stock Performance)
+        # Portfolio Growth = (Val_t - Val_0) / Val_0
+        p_growth = Decimal("0")
+        if stock_val_0 > 0:
+            p_growth = (stock_val_t - stock_val_0) / stock_val_0 * 100
+        
+        # VNIndex Growth
+        v_growth = Decimal("0")
+        if vnindex_0 > 0 and vnindex_t > 0:
+            v_growth = (vnindex_t - vnindex_0) / vnindex_0 * 100
 
         series.append({
-            "date": s.date.strftime("%Y-%m-%d"),
-            "PORTFOLIO": round(_safe_float(p_growth), 2), # FIX: key 'PORTFOLIO' cho frontend
-            "VNINDEX": round(_safe_float(v_growth), 2)    # ADD: benchmark
+            "date": day.strftime("%Y-%m-%d"),
+            "PORTFOLIO": round(_safe_float(p_growth), 2),
+            "VNINDEX": round(_safe_float(v_growth), 2)
         })
 
     return {
         "portfolio": series,
-        "base_date": snaps[0].date.strftime("%Y-%m-%d"),
-        "base_nav": _safe_float(base_nav),
+        "base_date": date_0.strftime("%Y-%m-%d"),
+        "base_nav": _safe_float(stock_val_0),
         "data_points": len(series),
     }
 
 
-def nav_history(db: Session, limit: int = 20) -> List[Dict[str, Any]]:
-    snaps = db.query(models.DailySnapshot).order_by(desc(models.DailySnapshot.date)).limit(limit).all()
+def nav_history(db: Session, start_date: date | None = None, end_date: date | None = None, limit: int = 30) -> List[Dict[str, Any]]:
+    query = db.query(models.DailySnapshot)
+    
+    if start_date:
+        # Lấy thêm 1 ngày trước đó để tính % biến động cho ngày đầu tiên của khoảng lọc
+        search_start = start_date - timedelta(days=7) # trừ hao ngày lễ/cuối tuần
+        query = query.filter(models.DailySnapshot.date >= search_start)
+    
+    if end_date:
+        query = query.filter(models.DailySnapshot.date <= end_date)
+    
+    snaps = query.order_by(desc(models.DailySnapshot.date)).all()
+    
+    # Nếu không có ngày bắt đầu, giới hạn số lượng mặc định
+    if not start_date:
+        snaps = snaps[:limit]
+
+    # 1. Lấy map dòng tiền để tính toán chính xác theo công thức SSI
+    if snaps:
+        min_date = snaps[-1].date
+        max_date = snaps[0].date
+        flows_map = _get_flows_map(db, min_date, max_date)
+    else:
+        flows_map = {}
 
     res: List[Dict[str, Any]] = []
-    for i in range(len(snaps) - 1):
-        curr, prev = snaps[i], snaps[i + 1]
+    # SSI: Tính hiệu suất tổng hợp RORt0->tn = [(1+R1)(1+R2)...] - 1
+    total_r_plus_1 = 1.0
+    total_net_flow = Decimal("0")
+    
+    for i in range(len(snaps)):
+        curr = snaps[i]
+        
+        if start_date and curr.date < start_date:
+            continue
+            
         curr_nav = _d(curr.total_nav)
-        prev_nav = _d(prev.total_nav)
-        change = curr_nav - prev_nav
-        pct = (change / prev_nav * 100) if prev_nav > 0 else Decimal("0")
+        
+        if i + 1 < len(snaps):
+            prev = snaps[i + 1]
+            prev_nav = _d(prev.total_nav)
+            net_flow = flows_map.get(curr.date, Decimal("0"))
+            profit, pct = _calc_profit_pct(curr_nav, prev_nav, net_flow)
+            
+            # Tích lũy hiệu suất (chỉ tích lũy nếu số hợp lệ)
+            if math.isfinite(pct):
+                total_r_plus_1 *= (1 + pct / 100)
+                
+            total_net_flow += net_flow
+            change = curr_nav - prev_nav - net_flow
+        else:
+            change = Decimal("0")
+            pct = 0.0
 
         res.append(
             {
                 "date": curr.date.strftime("%Y-%m-%d"),
                 "nav": _safe_float(curr_nav),
                 "change": _safe_float(change),
-                "pct": _safe_float(pct),
+                "pct": pct,
             }
         )
-    return res
+    
+    # Summary cho giao diện
+    perf_pct = (total_r_plus_1 - 1) * 100
+    if not math.isfinite(perf_pct):
+        perf_pct = 0.0
+
+    summary = {
+        "start_nav": _safe_float(snaps[-1].total_nav) if snaps else 0,
+        "end_nav": _safe_float(snaps[0].total_nav) if snaps else 0,
+        "net_flow": _safe_float(total_net_flow),
+        "total_profit": sum(item["change"] for item in res),
+        "total_performance_pct": _safe_float(perf_pct)
+    }
+
+    return {"history": res, "summary": summary}

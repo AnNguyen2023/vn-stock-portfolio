@@ -16,6 +16,7 @@ from core.db import engine
 from core.redis_client import init_redis
 
 from routers import trading, portfolio, logs, market, watchlist
+from tasks import cleanup_expired_data_task
 
 
 load_dotenv(".env", override=True)
@@ -46,6 +47,12 @@ def on_startup():
         print(f"[DB] ⚠️ create_all skipped/error: {e}")
 
     print("🚀 Invest Journal ready!")
+    
+    # Run cleanup of expired notes (3 year rule)
+    try:
+        cleanup_expired_data_task()
+    except Exception as e:
+        print(f"[MAINTENANCE] ⚠️ cleanup failed: {e}")
 
 
 # Routers

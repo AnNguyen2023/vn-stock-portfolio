@@ -78,6 +78,7 @@ export const updateTransactionNote = (id, note) => axios.put(`${API_URL}/logs/${
 export const getWatchlists = () => axios.get(`${API_URL}/watchlists/`);
 export const createWatchlist = (name) => axios.post(`${API_URL}/watchlists/`, { name });
 export const deleteWatchlist = (id) => axios.delete(`${API_URL}/watchlists/${id}`);
+export const renameWatchlist = (id, name) => axios.put(`${API_URL}/watchlists/${id}`, { name });
 export const addTickerToWatchlist = (id, ticker) => axios.post(`${API_URL}/watchlists/${id}/tickers`, { ticker });
 export const removeTickerFromWatchlist = (watchlistId, tickerId) => axios.delete(`${API_URL}/watchlists/${watchlistId}/tickers/${tickerId}`);
 export const getWatchlistDetail = (id) => axios.get(`${API_URL}/watchlists/${id}/detail`);
@@ -103,8 +104,14 @@ export const getHistoricalData = async (ticker, period = '1m') => {
     }
 };
 
-export const getNavHistory = async (limit = 10) => {
-    return axios.get(`${API_URL}/nav-history`, { params: { limit } });
+export const getNavHistory = async (startDate = null, endDate = null, limit = 30) => {
+    return axios.get(`${API_URL}/nav-history`, {
+        params: {
+            start_date: startDate,
+            end_date: endDate,
+            limit
+        }
+    });
 };
 // Chart Growth: lấy series tăng trưởng của DANH MỤC (PORTFOLIO)
 export const getChartGrowth = (period = "1m") =>

@@ -1,11 +1,18 @@
 "use client";
 import { TrendingUp, TrendingDown, Minus } from "lucide-react";
-import { ResponsiveContainer, LineChart, Line, YAxis } from "recharts";
 import { useState, useEffect } from "react";
+import TrendingIcon from "./TrendingIcon";
 
 export default function WatchlistRow({ item, onRemove, isSelected, onToggle }) {
-    const [mounted, setMounted] = useState(false);
-    useEffect(() => { setMounted(true); }, []);
+    const [trending, setTrending] = useState({ trend: "sideways", change_pct: 0 });
+
+    useEffect(() => {
+        // Fetch trending data
+        fetch(`http://localhost:8000/trending/${item.ticker}`)
+            .then(res => res.json())
+            .then(data => setTrending(data))
+            .catch(() => setTrending({ trend: "sideways", change_pct: 0 }));
+    }, [item.ticker]);
 
     const isPositive = item.change_pct > 0;
     const isNegative = item.change_pct < 0;
@@ -98,24 +105,8 @@ export default function WatchlistRow({ item, onRemove, isSelected, onToggle }) {
                 </div>
             </td>
 
-            <td className="p-4 w-36 h-14">
-                <div className="w-full h-full overflow-hidden">
-                    {mounted && (
-                        <ResponsiveContainer width="100%" height="100%" minWidth={0} minHeight={0}>
-                            <LineChart data={item.sparkline.map((v, i) => ({ val: v, id: i }))}>
-                                <YAxis hide domain={['dataMin', 'dataMax']} />
-                                <Line
-                                    type="monotone"
-                                    dataKey="val"
-                                    stroke={theme.sparkline}
-                                    strokeWidth={2.5}
-                                    dot={false}
-                                    animationDuration={1500}
-                                />
-                            </LineChart>
-                        </ResponsiveContainer>
-                    )}
-                </div>
+            <td className="p-4 text-center">
+                <TrendingIcon trend={trending.trend} changePct={trending.change_pct} size={26} />
             </td>
 
             <td className="p-4 text-right font-medium text-slate-600 text-sm tabular-nums">

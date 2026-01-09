@@ -1,8 +1,52 @@
 "use client";
-import { List, PlusCircle, MinusCircle, TrendingUp, TrendingDown, Minus } from 'lucide-react';
-import StatusBadge from '../components/StatusBadge'; // 1. Đã import
+import React, { useState, useMemo } from 'react';
+import { List, PlusCircle, MinusCircle, TrendingUp, TrendingDown, Minus, ArrowUpDown } from 'lucide-react';
+import StatusBadge from '../components/StatusBadge';
+import StockTrendingCell from '../components/StockTrendingCell';
 
-export default function StockTable({ data, buyForm, setBuyForm, setSellForm, setShowBuy, setShowSell, lastUpdated }) {
+export default function StockTable({ data, buyForm, setBuyForm, setSellForm, setShowBuy, setShowSell }) {
+  const [sortConfig, setSortConfig] = useState({ key: null, direction: 'asc' });
+
+  const sortedItems = useMemo(() => {
+    let items = [...(data?.holdings || [])];
+    if (sortConfig.key !== null) {
+      items.sort((a, b) => {
+        let aValue = a[sortConfig.key];
+        let bValue = b[sortConfig.key];
+
+        // Handle undefined/null
+        if (aValue === undefined) aValue = -Infinity;
+        if (bValue === undefined) bValue = -Infinity;
+
+        if (aValue < bValue) {
+          return sortConfig.direction === 'asc' ? -1 : 1;
+        }
+        if (aValue > bValue) {
+          return sortConfig.direction === 'asc' ? 1 : -1;
+        }
+        return 0;
+      });
+    }
+    return items;
+  }, [data?.holdings, sortConfig]);
+
+  const requestSort = (key) => {
+    let direction = 'asc';
+    if (sortConfig.key === key && sortConfig.direction === 'asc') {
+      direction = 'desc';
+    }
+    setSortConfig({ key, direction });
+  };
+
+  const SortIcon = ({ columnKey }) => {
+    const isActive = sortConfig.key === columnKey;
+    return (
+      <ArrowUpDown
+        size={14}
+        className={`inline-block ml-1 transition-colors ${isActive ? 'text-emerald-500' : 'text-slate-500'}`}
+      />
+    );
+  };
   return (
     <div className="bg-white rounded-2xl shadow-sm border border-slate-400 overflow-hidden mb-6">
       <div className="p-5 border-b border-slate-300 flex justify-between items-center bg-white">
@@ -13,24 +57,29 @@ export default function StockTable({ data, buyForm, setBuyForm, setSellForm, set
           </div>
           <span className="px-2 py-0.5 bg-slate-100 text-slate-500 text-xs font-bold rounded-full">{data?.holdings?.length || 0} mã</span>
         </div>
-        <div className="text-right">
-          <span className="text-sm font-bold text-slate-500">
-            Cập nhật lúc: <span className="text-emerald-600 font-extrabold">{lastUpdated ? lastUpdated.toLocaleTimeString('vi-VN') : '--:--:--'}</span>
-          </span>
-        </div>
       </div>
 
       <div className="overflow-x-auto">
         <table className="w-full text-left border-collapse">
-          <thead className="bg-slate-50/50 text-slate-500 text-[13px] uppercase font-bold tracking-[0.12em] border-b border-slate-100">
+          <thead className="bg-slate-50/50 text-slate-500 text-[13px] uppercase font-bold tracking-[0.12em] border-b border-slate-200">
             <tr>
-              <th className="p-4 pl-6">Mã CK</th><th className="p-4 text-right">SL</th><th className="p-4 text-right">Giá TB</th><th className="p-4 text-right">Giá TT</th><th className="p-4 text-right">Giá trị</th><th className="p-4 text-right">Lãi/Lỗ</th><th className="p-4 text-center w-32">Tỷ trọng</th>
-              <th className="p-4 text-right">Hôm nay</th>
-              <th className="p-4 text-center">Thao tác</th>
+              <th className="p-4 pl-6 cursor-pointer hover:bg-slate-100/50 transition-colors border-r border-slate-200 whitespace-nowrap" onClick={() => requestSort('ticker')}>Mã CK <SortIcon columnKey="ticker" /></th>
+              <th className="p-4 text-right cursor-pointer hover:bg-slate-100/50 transition-colors border-r border-slate-200 whitespace-nowrap" onClick={() => requestSort('volume')}>SL <SortIcon columnKey="volume" /></th>
+              <th className="p-4 text-right cursor-pointer hover:bg-slate-100/50 transition-colors border-r border-slate-200 whitespace-nowrap" onClick={() => requestSort('avg_price')}>Giá TB <SortIcon columnKey="avg_price" /></th>
+              <th className="p-4 text-right cursor-pointer hover:bg-slate-100/50 transition-colors border-r border-slate-200 whitespace-nowrap" onClick={() => requestSort('current_price')}>Giá TT <SortIcon columnKey="current_price" /></th>
+              <th className="p-4 text-right cursor-pointer hover:bg-slate-100/50 transition-colors border-r border-slate-200 whitespace-nowrap" onClick={() => requestSort('current_value')}>Giá trị <SortIcon columnKey="current_value" /></th>
+              <th className="p-4 text-right cursor-pointer hover:bg-slate-100/50 transition-colors border-r border-slate-200 whitespace-nowrap" onClick={() => requestSort('profit_loss')}>Lãi/Lỗ <SortIcon columnKey="profit_loss" /></th>
+              <th className="p-4 text-center w-32 cursor-pointer hover:bg-slate-100/50 transition-colors border-r border-slate-200 whitespace-nowrap" onClick={() => requestSort('weight')}>Tỷ trọng <SortIcon columnKey="weight" /></th>
+              <th className="p-4 text-center border-r border-slate-200 whitespace-nowrap">
+                <div>Xu hướng</div>
+                <div className="text-[10px] text-slate-800 font-normal">(5 phiên)</div>
+              </th>
+              <th className="p-4 text-right cursor-pointer hover:bg-slate-100/50 transition-colors border-r border-slate-200 whitespace-nowrap" onClick={() => requestSort('today_change_percent')}>Hôm nay <SortIcon columnKey="today_change_percent" /></th>
+              <th className="p-4 text-center whitespace-nowrap">Thao tác</th>
             </tr>
           </thead>
-          <tbody className="divide-y divide-slate-100">
-            {data?.holdings.map((s) => {
+          <tbody className="">
+            {sortedItems.map((s) => {
               const isProfit = s.profit_loss >= 0;
               const allocation = data.total_stock_value > 0 ? (s.current_value / data.total_stock_value) * 100 : 0;
 
@@ -72,37 +121,40 @@ export default function StockTable({ data, buyForm, setBuyForm, setSellForm, set
 
               return (
                 <tr key={s.ticker} className="hover:bg-slate-200 transition-colors group">
-                  <td className="p-4 pl-6 relative">
+                  <td className="p-4 pl-6 relative border-r border-slate-200 last:border-r-0">
                     <div className={`absolute left-0 top-3 bottom-3 w-1.5 rounded-r-full ${theme.bg}`}></div>
                     <div>
                       <div className={`font-bold text-[15px] ${theme.text}`}>{s.ticker}</div>
                       <div className="text-[10px] text-slate-400 font-medium truncate max-w-[120px]">Công ty cổ phần {s.ticker}</div>
                     </div>
                   </td>
-                  <td className="p-4 text-right font-bold text-slate-700 text-sm">{s.volume.toLocaleString()}</td>
-                  <td className="p-4 text-right text-sm font-medium text-slate-500">
+                  <td className="p-4 text-right font-bold text-slate-700 text-sm border-r border-slate-200 last:border-r-0">{s.volume.toLocaleString()}</td>
+                  <td className="p-4 text-right text-sm font-medium text-slate-500 border-r border-slate-200 last:border-r-0">
                     <span className="tabular-nums">{(s.avg_price * 1000).toLocaleString('vi-VN')}</span>
                   </td>
-                  <td className="p-4 text-right text-sm">
+                  <td className="p-4 text-right text-sm border-r border-slate-200 last:border-r-0">
                     <div className={`font-bold tabular-nums ${theme.text}`}>{(s.current_price * 1000).toLocaleString('vi-VN')}</div>
                   </td>
-                  <td className="p-4 text-right text-sm font-bold text-slate-700">{Math.floor(s.current_value).toLocaleString()}</td>
+                  <td className="p-4 text-right text-sm font-bold text-slate-700 border-r border-slate-200 last:border-r-0">{Math.floor(s.current_value).toLocaleString()}</td>
 
-                  <td className="p-4 text-right">
-                    <div className="flex flex-col items-end">
-                      <span className={`text-sm font-bold ${isProfit ? 'text-emerald-600' : 'text-rose-500'}`}>
-                        {isProfit ? '↗' : '↘'} {Math.abs(Math.floor(s.profit_loss)).toLocaleString()}
-                      </span>
+                  <td className="p-4 text-right border-r border-slate-200 last:border-r-0">
+                    <span className={`text-base font-medium ${isProfit ? 'text-emerald-600' : 'text-rose-500'}`}>
+                      {Math.abs(Math.floor(s.profit_loss)).toLocaleString()}
+                    </span>
+                    <div className="flex items-center gap-2">
                       <StatusBadge value={s.profit_percent.toFixed(2)} showIcon={false} />
                     </div>
                   </td>
-                  <td className="p-4 text-center">
+                  <td className="p-4 text-center border-r border-slate-200 last:border-r-0">
                     <div className="bg-slate-100 w-16 h-1.5 rounded-full mx-auto overflow-hidden"><div className="bg-orange-500 h-full transition-all duration-500" style={{ width: `${allocation}%` }}></div></div>
                     <span className="text-[15px] font-medium text-slate-600">{allocation.toFixed(1)}%</span>
                   </td>
-                  <td className="p-4 text-right">
-                    <div className={`inline-flex items-center gap-1 font-bold text-[12px] ${theme.badge} px-2.5 py-1 rounded-lg`}>
-                      {s.today_change_percent > 0 ? <TrendingUp size={12} /> : s.today_change_percent < 0 ? <TrendingDown size={12} /> : <Minus size={12} />}
+                  <td className="p-4 text-center border-r border-slate-200 last:border-r-0">
+                    <StockTrendingCell ticker={s.ticker} />
+                  </td>
+                  <td className="p-4 text-right border-r border-slate-200 last:border-r-0">
+                    <div className={`inline-flex items-center gap-1 font-bold text-sm tabular-nums ${theme.badge} px-2.5 py-1 rounded-lg`}>
+                      {s.today_change_percent > 0 ? <TrendingUp size={14} /> : s.today_change_percent < 0 ? <TrendingDown size={14} /> : <Minus size={14} />}
                       {s.today_change_percent > 0 ? "+" : ""}{s.today_change_percent.toFixed(2)}%
                     </div>
                   </td>
@@ -117,12 +169,24 @@ export default function StockTable({ data, buyForm, setBuyForm, setSellForm, set
               );
             })}
           </tbody>
+          <tfoot className="bg-white border-t border-slate-300">
+            <tr>
+              <td colSpan={5} className="p-5 pl-6 text-slate-700 text-[20px] font-medium tracking-wide">Tổng giá trị danh mục</td>
+              <td className="p-5 text-right">
+                <span className="text-sm font-bold text-emerald-600 bg-emerald-50 px-3 py-1 rounded-full whitespace-nowrap">
+                  ({data?.total_nav > 0 ? ((data.total_stock_value / data.total_nav) * 100).toFixed(2) : 0}% NAV)
+                </span>
+              </td>
+              <td colSpan={3} className="p-5 pr-6 text-right">
+                <div className="flex items-baseline justify-end gap-1.5">
+                  <span className="text-xl font-bold text-slate-900 tracking-tight">{Math.floor(data?.total_stock_value || 0).toLocaleString('en-US')}</span>
+                  <span className="text-base font-semibold text-slate-500 lowercase">vnd</span>
+                </div>
+              </td>
+            </tr>
+          </tfoot>
         </table>
-      </div>
-      <div className="bg-white p-5 flex justify-between items-center border-t border-slate-300">
-        <span className="text-slate-700 text-[20px] font-medium tracking-wide ml-2">Tổng giá trị danh mục</span>
-        <div className="flex items-baseline gap-1.5 mr-4"><span className="text-xl font-bold text-slate-900 tracking-tight">{Math.floor(data?.total_stock_value || 0).toLocaleString('en-US')}</span><span className="text-base font-semibold text-slate-500 lowercase">vnd</span></div>
-      </div>
-    </div>
+      </div >
+    </div >
   );
 }

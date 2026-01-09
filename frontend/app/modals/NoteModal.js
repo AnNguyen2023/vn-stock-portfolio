@@ -13,15 +13,15 @@ export default function NoteModal({ showNoteModal, setShowNoteModal, editingNote
         </div>
 
         <textarea
-          className="w-full p-4 bg-slate-50 border border-slate-100 rounded-2xl text-sm font-medium outline-none focus:ring-4 focus:ring-blue-100 min-h-[120px] resize-none"
+          className="w-full p-4 bg-slate-50 border border-slate-100 rounded-2xl text-[17px] text-slate-800 font-medium outline-none focus:ring-4 focus:ring-blue-100 min-h-[120px] resize-none"
           placeholder="Anh Zon viết gì đó cho lệnh này nhé..."
           value={editingNote.content}
           onChange={(e) => setEditingNote({ ...editingNote, content: e.target.value })}
         />
 
         <div className="flex gap-3 mt-6">
-          <button onClick={() => setShowNoteModal(false)} className="flex-1 py-4 bg-slate-100 text-slate-500 font-black rounded-2xl text-xs uppercase">Đóng</button>
-          <button onClick={handleUpdateNote} className="flex-1 py-4 bg-blue-600 text-white font-black rounded-2xl text-xs uppercase shadow-lg shadow-blue-100 active:scale-95 transition-all">Lưu ghi chú</button>
+          <button onClick={() => setShowNoteModal(false)} className="flex-1 py-4 bg-slate-100 text-slate-500 font-normal rounded-2xl text-sm uppercase">Đóng</button>
+          <button onClick={handleUpdateNote} className="flex-1 py-4 bg-blue-600 text-white font-normal rounded-2xl text-sm uppercase shadow-lg shadow-blue-100 active:scale-95 transition-all">Lưu ghi chú</button>
         </div>
       </div>
     </div>

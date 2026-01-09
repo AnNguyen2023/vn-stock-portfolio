@@ -67,3 +67,10 @@ def get_historical(
         "status": "success",
         "data": [{"date": i.date.strftime("%Y-%m-%d"), "close": float(i.close_price)} for i in stored_data],
     }
+
+
+@router.get("/trending/{ticker}")
+def get_trending(ticker: str):
+    """Get 5-session trending indicator for a ticker"""
+    from services.market_service import get_trending_indicator
+    return get_trending_indicator(ticker)

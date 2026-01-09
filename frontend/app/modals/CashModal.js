@@ -14,19 +14,19 @@ export default function CashModal({
         </h2>
         <form onSubmit={showDeposit ? handleDeposit : handleWithdraw} className="space-y-6">
           <div>
-            <label className="text-[10px] font-black text-slate-400 uppercase tracking-widest ml-1 mb-2 block">Số tiền (VND)</label>
+            <label className="text-sm font-medium text-slate-600 uppercase tracking-widest ml-1 mb-2 block">Số tiền (VND)</label>
             <div className="relative flex items-center">
               <input type="text" required autoFocus className="w-full p-4 bg-slate-50 border border-slate-100 rounded-2xl text-2xl font-bold outline-none focus:ring-4 focus:ring-emerald-100 transition-all" value={amount} onChange={handleAmountChange} placeholder="0" />
-              <span className="absolute right-4 text-slate-400 font-bold text-xs">VND</span>
+              <span className="absolute right-4 text-slate-600 font-bold text-sm">VND</span>
             </div>
           </div>
           <div>
-            <label className="text-[10px] font-black text-slate-400 uppercase tracking-widest ml-1 mb-2 block">Ghi chú giao dịch</label>
+            <label className="text-sm font-medium text-slate-600 uppercase tracking-widest ml-1 mb-2 block">Ghi chú giao dịch</label>
             <input type="text" className="w-full p-4 bg-slate-50 border border-slate-100 rounded-2xl text-sm font-bold outline-none focus:ring-4 focus:ring-emerald-100" value={description} onChange={(e) => setDescription(e.target.value)} placeholder="..." />
           </div>
           <div className="flex gap-3 pt-2">
-            <button type="button" onClick={closeModals} className="flex-1 py-4 bg-slate-100 text-slate-500 font-black rounded-2xl text-xs uppercase tracking-widest hover:bg-slate-200 transition-all">Hủy bỏ</button>
-            <button type="submit" className={`flex-1 py-4 text-white font-black rounded-2xl text-xs uppercase tracking-widest shadow-lg active:scale-95 transition-all ${showDeposit ? 'bg-emerald-500 shadow-emerald-100' : 'bg-purple-600 shadow-purple-100'}`}>Xác nhận</button>
+            <button type="button" onClick={closeModals} className="flex-1 py-4 bg-slate-100 text-slate-500 font-medium rounded-2xl text-sm uppercase hover:bg-slate-200 transition-all">Hủy bỏ</button>
+            <button type="submit" className={`flex-1 py-4 text-white font-medium rounded-2xl text-sm uppercase shadow-lg active:scale-95 transition-all ${showDeposit ? 'bg-emerald-500 shadow-emerald-100' : 'bg-purple-600 shadow-purple-100'}`}>Xác nhận</button>
           </div>
         </form>
       </div>
