@@ -10,7 +10,7 @@ export default function UndoModal({ showUndoConfirm, setShowUndoConfirm, confirm
         <div className="flex items-center gap-4 mb-6">
           <div className="p-3 bg-blue-50 text-blue-600 rounded-2xl"><Activity size={28} /></div>
           <div>
-            <h3 className="text-lg font-black text-slate-800 uppercase tracking-tight">Xác nhận Undo</h3>
+            <h3 className="text-base font-bold text-slate-800 uppercase tracking-tight">Xác nhận Undo</h3>
             <p className="text-[10px] font-bold text-blue-500 uppercase tracking-widest">Hệ thống Information</p>
           </div>
         </div>

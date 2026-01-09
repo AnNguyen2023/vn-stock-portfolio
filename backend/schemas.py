@@ -18,10 +18,33 @@ class BuyStockRequest(BaseModel):
 
     @field_validator('ticker')
     @classmethod
-    def ticker_must_be_alpha(cls, v: str) -> str:
-        if not v.isalpha():
-            raise ValueError('Mã chứng khoán chỉ được chứa chữ cái')
+    def ticker_must_be_alphanumeric(cls, v: str) -> str:
+        if not v.isalnum():
+            raise ValueError('Mã chứng khoán chỉ được chứa chữ cái và số')
         return v.upper()
+
+# --- WATCHLIST SCHEMAS ---
+
+class WatchlistTickerCreate(BaseModel):
+    ticker: str
+
+class WatchlistCreate(BaseModel):
+    name: str
+
+class WatchlistTickerSchema(BaseModel):
+    id: int
+    ticker: str
+    added_at: datetime
+    class Config:
+        from_attributes = True
+
+class WatchlistSchema(BaseModel):
+    id: int
+    name: str
+    tickers: list[WatchlistTickerSchema] = []
+    created_at: datetime
+    class Config:
+        from_attributes = True
 
 class SellStockRequest(BaseModel):
     ticker: str = Field(..., min_length=3, max_length=10)
@@ -35,7 +58,7 @@ class SellStockRequest(BaseModel):
 
     @field_validator('ticker')
     @classmethod
-    def ticker_must_be_alpha(cls, v: str) -> str:
-        if not v.isalpha():
-            raise ValueError('Mã chứng khoán chỉ được chứa chữ cái')
+    def ticker_must_be_alphanumeric(cls, v: str) -> str:
+        if not v.isalnum():
+            raise ValueError('Mã chứng khoán chỉ được chứa chữ cái và số')
         return v.upper()

@@ -8,14 +8,14 @@ const API_URL = 'http://localhost:8000';
 // 2. Cấu hình Interceptor (Người gác cổng)
 // Tự động bắt lỗi kết nối toàn cục để triệt tiêu màn hình đỏ lỗi hệ thống
 axios.interceptors.response.use(
-    (response) => response, 
+    (response) => response,
     (error) => {
         // Trường hợp Backend chưa bật hoặc lỗi mạng
         if (!error.response) {
             toast.error('Lỗi kết nối hệ thống', {
                 description: 'Máy chủ Backend (Python) đang tắt hoặc lỗi mạng. Vui lòng kiểm tra Terminal.',
             });
-        } 
+        }
         // Các lỗi nghiệp vụ (400, 422, 500) sẽ được catch trực tiếp tại hàm handle trên giao diện
         return Promise.reject(error);
     }
@@ -45,8 +45,8 @@ export const getPerformance = async () => {
 
 // Tra cứu lãi lỗ thực nhận theo khoảng thời gian
 export const getHistorySummary = async (startDate, endDate) => {
-    return axios.get(`${API_URL}/history-summary`, { 
-        params: { start_date: startDate, end_date: endDate } 
+    return axios.get(`${API_URL}/history-summary`, {
+        params: { start_date: startDate, end_date: endDate }
     });
 };
 
@@ -72,9 +72,15 @@ export const sellStock = async (data) => {
     return axios.post(`${API_URL}/sell`, data);
 };
 
-export const updateTransactionNote = async (txId, note) => {
-    return axios.post(`${API_URL}/update-note`, null, { params: { tx_id: txId, note: note } });
-};
+export const updateTransactionNote = (id, note) => axios.put(`${API_URL}/logs/${id}/note`, { note });
+
+// --- WATCHLIST API ---
+export const getWatchlists = () => axios.get(`${API_URL}/watchlists/`);
+export const createWatchlist = (name) => axios.post(`${API_URL}/watchlists/`, { name });
+export const deleteWatchlist = (id) => axios.delete(`${API_URL}/watchlists/${id}`);
+export const addTickerToWatchlist = (id, ticker) => axios.post(`${API_URL}/watchlists/${id}/tickers`, { ticker });
+export const removeTickerFromWatchlist = (watchlistId, tickerId) => axios.delete(`${API_URL}/watchlists/${watchlistId}/tickers/${tickerId}`);
+export const getWatchlistDetail = (id) => axios.get(`${API_URL}/watchlists/${id}/detail`);
 
 // [NEW] Hoàn tác (Undo) lệnh mua gần nhất
 export const undoLastBuy = async () => {
@@ -89,7 +95,7 @@ export const getHistoricalData = async (ticker, period = '1m') => {
         const res = await axios.get(`${API_URL}/historical`, {
             params: { ticker, period }
         });
-        return res.data; 
+        return res.data;
     } catch (error) {
         // Lỗi này không làm sập app, chỉ log ra console
         console.error(`Lỗi lấy lịch sử ${ticker}:`, error);
@@ -102,9 +108,9 @@ export const getNavHistory = async (limit = 10) => {
 };
 // Chart Growth: lấy series tăng trưởng của DANH MỤC (PORTFOLIO)
 export const getChartGrowth = (period = "1m") =>
-  axios.get(`${API_URL}/chart-growth`, {
-    params: { period },
-  });
+    axios.get(`${API_URL}/chart-growth`, {
+        params: { period },
+    });
 
 
 // API Reset dữ liệu (Dùng khi cần dọn sạch hệ thống)

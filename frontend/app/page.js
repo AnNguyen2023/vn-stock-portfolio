@@ -1,6 +1,7 @@
 "use client";
 
 import { useEffect, useState } from "react";
+import dynamic from "next/dynamic";
 import { RefreshCw, Wallet, TrendingUp, PieChart as PieChartIcon } from "lucide-react";
 import { Toaster, toast } from "sonner";
 
@@ -13,8 +14,10 @@ import NoteModal from "./modals/NoteModal";
 
 import Header from "./sections/Header";
 import StockTable from "./sections/StockTable";
+
 import GrowthChart from "./sections/GrowthChart";
-import HistoryTabs from "./sections/HistoryTabs";
+const HistoryTabs = dynamic(() => import("./sections/HistoryTabs"), { ssr: false });
+const WatchlistPro = dynamic(() => import("./sections/WatchlistPro"), { ssr: false });
 
 import {
   getPortfolio,
@@ -114,9 +117,11 @@ export default function Dashboard() {
   const [logs, setLogs] = useState([]);
   const [perf, setPerf] = useState(null);
   const [loading, setLoading] = useState(true);
+  const [activeMainTab, setActiveMainTab] = useState("watchlist"); // 'watchlist' hoặc 'growth'
   const [chartData, setChartData] = useState([]);
   const [historicalProfit, setHistoricalProfit] = useState(null);
   const [navHistory, setNavHistory] = useState([]);
+  const [portfolioLastUpdated, setPortfolioLastUpdated] = useState(new Date());
 
   // Note modal
   const [editingNote, setEditingNote] = useState({ id: null, content: "" });
@@ -180,7 +185,10 @@ export default function Dashboard() {
   const fetchAllData = async () => {
     try {
       const resP = await getPortfolio();
-      if (resP?.data) setData(resP.data);
+      if (resP?.data) {
+        setData(resP.data);
+        setPortfolioLastUpdated(new Date());
+      }
 
       setLoading(false);
 
@@ -204,7 +212,7 @@ export default function Dashboard() {
           .then((res) => {
             if (res?.data) setNavHistory(res.data);
           })
-          .catch(() => {});
+          .catch(() => { });
       }
     } catch (error) {
       console.error("LỖI KẾT NỐI BACKEND:", error);
@@ -214,7 +222,7 @@ export default function Dashboard() {
 
   useEffect(() => {
     fetchAllData();
-    const interval = setInterval(fetchAllData, 30000);
+    const interval = setInterval(fetchAllData, 10000);
     return () => clearInterval(interval);
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, []);
@@ -478,7 +486,7 @@ export default function Dashboard() {
   // Main UI
   // -----------------------------
   return (
-    <main className="min-h-screen bg-[#f8fafc] p-4 md:p-8 font-sans text-slate-900">
+    <main className="min-h-screen bg-[#f8fafc] p-4 md:p-6 font-sans text-slate-900">
       <div className="max-w-7xl mx-auto">
         <Header
           {...{
@@ -492,8 +500,9 @@ export default function Dashboard() {
           }}
         />
 
+
         {/* SUMMARY */}
-        <div className="grid grid-cols-1 md:grid-cols-3 gap-6 mb-8">
+        <div className="grid grid-cols-1 md:grid-cols-3 gap-4 mb-6">
           <SummaryCard
             isPrivate={isPrivate}
             title="Vốn thực có (NAV)"
@@ -522,22 +531,43 @@ export default function Dashboard() {
           />
         </div>
 
-        {/* CHART */}
-        <GrowthChart
-          {...{
-            chartData,
-            chartRange,
-            setChartRange,
-            isDropdownOpen,
-            setIsDropdownOpen,
-            selectedComparisons,
-            holdingTickers,
-            toggleComparison,
-          }}
-        />
+        {/* MAIN CONTENT TABS (Watchlist / Growth) */}
+        <div className="mb-6">
+          <div className="flex items-center gap-1 p-1 bg-slate-100/50 rounded-2xl w-fit mb-4 border border-slate-400">
+            <button
+              onClick={() => setActiveMainTab("watchlist")}
+              className={`px-6 py-2.5 rounded-xl text-xs font-black uppercase transition-all ${activeMainTab === "watchlist" ? "bg-white text-emerald-600 shadow-sm" : "text-slate-400 hover:text-slate-600"}`}
+            >
+              Watchlist Pro
+            </button>
+            <button
+              onClick={() => setActiveMainTab("growth")}
+              className={`px-6 py-2.5 rounded-xl text-xs font-black uppercase transition-all ${activeMainTab === "growth" ? "bg-white text-emerald-600 shadow-sm" : "text-slate-400 hover:text-slate-600"}`}
+            >
+              Hiệu suất tăng trưởng
+            </button>
+          </div>
+
+          {activeMainTab === "growth" ? (
+            <GrowthChart
+              {...{
+                chartData,
+                chartRange,
+                setChartRange,
+                isDropdownOpen,
+                setIsDropdownOpen,
+                selectedComparisons,
+                holdingTickers,
+                toggleComparison,
+              }}
+            />
+          ) : (
+            <WatchlistPro />
+          )}
+        </div>
 
         {/* TABLE */}
-        <StockTable {...{ data, buyForm, setBuyForm, sellForm, setSellForm, setShowBuy, setShowSell }} />
+        <StockTable {...{ data, buyForm, setBuyForm, sellForm, setSellForm, setShowBuy, setShowSell, lastUpdated: portfolioLastUpdated }} />
 
         {/* HISTORY */}
         <HistoryTabs

@@ -1,5 +1,5 @@
 # routers/trading.py
-from fastapi import APIRouter, Depends, HTTPException
+from fastapi import APIRouter, Depends, HTTPException, BackgroundTasks
 from sqlalchemy.orm import Session
 from decimal import Decimal
 from datetime import datetime
@@ -10,6 +10,7 @@ import models
 import schemas
 from core.db import get_db
 from core.cache import invalidate_dashboard_cache
+from services.market_service import sync_historical_task
 
 router = APIRouter(
     tags=["Trading"],
@@ -21,11 +22,17 @@ def raise_error(message: str, status_code: int = 400):
 
 
 @router.post("/buy")
-def buy_stock(req: schemas.BuyStockRequest, db: Session = Depends(get_db)):
-    ticker = req.ticker.upper()
+def buy_stock(req: schemas.BuyStockRequest, background_tasks: BackgroundTasks, db: Session = Depends(get_db)):
+    ticker = req.ticker.strip().upper()
     volume = Decimal(str(req.volume))
     price_vnd = Decimal(str(req.price))
 
+    # 0. VALIDATE TICKER AGAINST MASTER LIST
+    security = db.query(models.Security).filter_by(symbol=ticker).first()
+    if not security:
+        raise_error(f"Mã chứng khoán '{ticker}' không hợp lệ hoặc không thuộc danh sách niêm yết được phép (HOSE/HNX/UPCOM).")
+
+    # 1. CHECK CASH BALANCE
     total_value = volume * price_vnd
     fee = total_value * Decimal(str(req.fee_rate))
     total_cost = total_value + fee
@@ -34,6 +41,7 @@ def buy_stock(req: schemas.BuyStockRequest, db: Session = Depends(get_db)):
     if not asset or asset.cash_balance < total_cost:
         raise_error(f"Thiếu {float(total_cost - asset.cash_balance):,.0f} VND")
 
+    # 2. UPDATE HOLDINGS
     holding = db.query(models.TickerHolding).filter_by(ticker=ticker).first()
     if holding:
         new_vol = holding.total_volume + volume
@@ -51,6 +59,7 @@ def buy_stock(req: schemas.BuyStockRequest, db: Session = Depends(get_db)):
         )
         db.add(holding)
 
+    # 3. RECORD TRANSACTIONS & CASHFLOW
     asset.cash_balance -= total_cost
     db.add(models.CashFlow(type=models.CashFlowType.WITHDRAW, amount=total_cost, description=f"Mua {int(volume):,} {ticker}"))
     db.add(models.StockTransaction(ticker=ticker, type=models.TransactionType.BUY, volume=volume, price=price_vnd, fee=fee, total_value=total_cost, note=req.note))
@@ -60,7 +69,10 @@ def buy_stock(req: schemas.BuyStockRequest, db: Session = Depends(get_db)):
     # clear cache dashboard
     invalidate_dashboard_cache()
 
-    return {"message": f"Đã khớp lệnh mua {int(volume)} {ticker}"}
+    # Auto sync historical data for the new ticker (1 year)
+    background_tasks.add_task(sync_historical_task, ticker, "1y")
+
+    return {"message": f"Định danh: {security.full_name} - Đã khớp lệnh mua {int(volume)} {ticker}"}
 
 
 @router.post("/sell")

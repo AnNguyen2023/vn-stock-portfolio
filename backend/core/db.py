@@ -20,10 +20,10 @@ Base = declarative_base()
 
 # CRITICAL FIX: Force dùng driver psycopg (v3) chuẩn tắc
 # Điều này giúp SQLAlchemy nhận diện đúng dialect và áp dụng các arg như prepare_threshold
-if DATABASE_URL.startswith("postgres://"):
-    DATABASE_URL = DATABASE_URL.replace("postgres://", "postgresql+psycopg://", 1)
-elif DATABASE_URL.startswith("postgresql://"):
-    DATABASE_URL = DATABASE_URL.replace("postgresql://", "postgresql+psycopg://", 1)
+if "://" in DATABASE_URL:
+    scheme, rest = DATABASE_URL.split("://", 1)
+    if scheme in ["postgres", "postgresql", "postgresql+psycopg2"]:
+        DATABASE_URL = f"postgresql+psycopg://{rest}"
 
 engine = create_engine(
     DATABASE_URL,

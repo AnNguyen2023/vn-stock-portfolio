@@ -20,7 +20,7 @@ router = APIRouter(tags=["Market Data"])
 def seed_index_data(background_tasks: BackgroundTasks):
     """Lệnh cho Tèo em đi nhặt 1 năm dữ liệu VNINDEX về kho"""
     background_tasks.add_task(seed_index_data_task)
-    return {"message": "Tèo em đang đi nhặt VN-INDEX, đại ca chờ xíu nhé!"}
+    return {"message": "Fetching VN-INDEX historical data, please wait a moment!"}
 
 
 @router.post("/sync-portfolio-history")
@@ -34,7 +34,7 @@ def sync_portfolio_history(background_tasks: BackgroundTasks, db: Session = Depe
     tickers = [h.ticker for h in holdings]
 
     background_tasks.add_task(sync_portfolio_history_task, tickers, 2.0)
-    return {"message": f"Đang lấy history cho {len(tickers)} mã chúng khoán của đại ca Zon."}
+    return {"message": f"Syncing history for {len(tickers)} stocks in your portfolio."}
 
 @router.get("/historical")
 def get_historical(

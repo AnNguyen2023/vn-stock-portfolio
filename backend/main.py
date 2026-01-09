@@ -3,6 +3,10 @@ from __future__ import annotations
 
 import os
 from dotenv import load_dotenv
+import pandas as pd
+
+# Pandas future configuration
+pd.set_option('future.no_silent_downcasting', True)
 
 from fastapi import FastAPI
 from fastapi.middleware.cors import CORSMiddleware
@@ -11,7 +15,7 @@ import models
 from core.db import engine
 from core.redis_client import init_redis
 
-from routers import trading, portfolio, logs, market
+from routers import trading, portfolio, logs, market, watchlist
 
 
 load_dotenv(".env", override=True)
@@ -49,6 +53,7 @@ app.include_router(portfolio.router)
 app.include_router(trading.router)
 app.include_router(market.router)
 app.include_router(logs.router)
+app.include_router(watchlist.router)
 
 
 @app.get("/")

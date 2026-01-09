@@ -5,7 +5,8 @@ from datetime import datetime, date
 from decimal import Decimal
 import enum
 
-from sqlalchemy import Column, Integer, String, Numeric, DateTime, Date, Enum, UniqueConstraint
+from sqlalchemy import Column, Integer, String, Numeric, DateTime, Date, Enum, UniqueConstraint, ForeignKey
+from sqlalchemy.orm import relationship
 
 from core.db import Base
 
@@ -100,3 +101,31 @@ class HistoricalPrice(Base):
     close_price = Column(Numeric(20, 4))
 
     __table_args__ = (UniqueConstraint("ticker", "date", name="_ticker_date_uc"),)
+
+
+class Security(Base):
+    """Danh mục các mã chứng khoán hợp lệ trên thị trường Việt Nam"""
+    __tablename__ = "securities"
+    symbol = Column(String(20), primary_key=True, index=True)
+    short_name = Column(String(100), nullable=True)
+    full_name = Column(String(255), nullable=True)
+    exchange = Column(String(20), index=True)  # HOSE, HNX, UPCOM
+    type = Column(String(20), index=True)      # STOCK, ETF, FUND
+    last_synced = Column(DateTime, default=datetime.now, onupdate=datetime.now)
+
+class Watchlist(Base):
+    """Danh sách theo dõi cổ phiếu tùy chỉnh"""
+    __tablename__ = "watchlists"
+    id = Column(Integer, primary_key=True, index=True)
+    name = Column(String(100), unique=True, index=True)
+    created_at = Column(DateTime, default=datetime.now)
+    
+    tickers = relationship("WatchlistTicker", backref="watchlist", cascade="all, delete-orphan")
+
+class WatchlistTicker(Base):
+    """Các mã chứng khoán trong một watchlist"""
+    __tablename__ = "watchlist_tickers"
+    id = Column(Integer, primary_key=True, index=True)
+    watchlist_id = Column(Integer, ForeignKey("watchlists.id", ondelete="CASCADE"))
+    ticker = Column(String(20), index=True)
+    added_at = Column(DateTime, default=datetime.now)

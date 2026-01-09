@@ -1,15 +1,15 @@
 "use client";
 
-export default function CashModal({ 
-  showDeposit, showWithdraw, amount, setAmount, description, setDescription, 
-  handleAmountChange, handleDeposit, handleWithdraw, closeModals 
+export default function CashModal({
+  showDeposit, showWithdraw, amount, setAmount, description, setDescription,
+  handleAmountChange, handleDeposit, handleWithdraw, closeModals
 }) {
   if (!showDeposit && !showWithdraw) return null;
 
   return (
     <div className="fixed inset-0 bg-slate-900/60 flex items-center justify-center p-4 z-[100] backdrop-blur-sm animate-in fade-in duration-300">
       <div className="bg-white rounded-3xl p-8 w-full max-w-md shadow-2xl border border-slate-100 transform animate-in zoom-in-95 duration-200">
-        <h2 className={`text-xl font-black mb-6 uppercase tracking-tight ${showDeposit ? 'text-emerald-600' : 'text-purple-600'}`}>
+        <h2 className={`text-lg font-bold mb-6 uppercase tracking-tight ${showDeposit ? 'text-emerald-600' : 'text-purple-600'}`}>
           {showDeposit ? 'Nạp tiền vào ví' : 'Rút tiền khỏi ví'}
         </h2>
         <form onSubmit={showDeposit ? handleDeposit : handleWithdraw} className="space-y-6">

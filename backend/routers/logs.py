@@ -3,6 +3,8 @@ routers/logs.py - API endpoints cho nhật ký giao dịch
 """
 from fastapi import APIRouter, Depends
 from sqlalchemy.orm import Session
+from sqlalchemy import cast, Date
+from datetime import datetime
 from database import get_db
 import models
 

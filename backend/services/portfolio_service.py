@@ -96,8 +96,14 @@ def calculate_portfolio(db: Session) -> Dict[str, Any]:
     items = []
 
     for h in holdings:
-        curr_p, ref_p = _pick_price(prices.get(h.ticker, {}), _d(h.average_price))
+        price_info = prices.get(h.ticker, {})
+        curr_p, ref_p = _pick_price(price_info, _d(h.average_price))
+        
+        # Lấy thêm các mốc giá cho 5 màu sắc (divided by 1000 for frontend)
         actual_ref = ref_p if ref_p > 0 else curr_p
+        
+        ceiling_p = _d(price_info.get("ceiling", 0)) if isinstance(price_info, dict) else Decimal("0")
+        floor_p = _d(price_info.get("floor", 0)) if isinstance(price_info, dict) else Decimal("0")
 
         curr_val = curr_p * _d(h.total_volume)
         profit_loss = curr_val - (_d(h.average_price) * _d(h.total_volume))
@@ -111,9 +117,11 @@ def calculate_portfolio(db: Session) -> Dict[str, Any]:
                 "ticker": h.ticker,
                 "volume": float(_d(h.total_volume)),
                 "available": float(_d(h.available_volume)),
-                # GIỮ ĐÚNG format cũ: chia 1000 để hiển thị theo giá "k"
                 "avg_price": float(_d(h.average_price) / 1000),
                 "current_price": float(curr_p / 1000),
+                "ref_price": float(actual_ref / 1000),
+                "ceiling_price": float(ceiling_p / 1000),
+                "floor_price": float(floor_p / 1000),
                 "today_change_percent": float(today_pct),
                 "profit_loss": float(profit_loss),
                 "profit_percent": float(profit_pct),
