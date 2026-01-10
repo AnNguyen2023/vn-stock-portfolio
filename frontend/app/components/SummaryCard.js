@@ -13,7 +13,7 @@ export default function SummaryCard({ title, value, icon, color, bg, isPrivate }
       <div className="flex justify-between items-start relative z-10">
         <div>
           {/* Tiêu đề nhỏ bên trên - đậm và rõ nét hơn */}
-          <p className="text-[11px] font-extrabold text-slate-500 uppercase tracking-[0.15em] mb-2">{title}</p>
+          <p className="text-base font-medium text-slate-600 uppercase tracking-tight mb-2">{title}</p>
           {/* Con số tiền chính - Bold mãnh (extrabold) và sắc nét */}
           <h3 className={`text-[26px] font-bold tracking-tight ${color} transition-all duration-500 ${isPrivate ? 'blur-md select-none opacity-20' : ''}`}>
             {isPrivate ? '8,888,888,888' : formatted}

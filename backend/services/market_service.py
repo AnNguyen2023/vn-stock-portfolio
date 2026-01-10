@@ -76,6 +76,7 @@ def _process_single_ticker(t: str, p_info: dict) -> dict:
                 "roe": ratios["roe"],
                 "roa": ratios["roa"],
                 "pe": ratios["pe"],
+                "pb": ratios.get("pb", 0),
                 "sparkline": sparkline,
                 "industry": exchange,
             }

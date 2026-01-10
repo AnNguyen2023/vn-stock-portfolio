@@ -124,3 +124,12 @@ export const getChartGrowth = (period = "1m") =>
 export const resetData = async () => {
     return axios.post(`${API_URL}/reset-data`);
 };
+// --- TITAN ADAPTIVE SCANNER API ---
+export const getTitanStatus = () => axios.get(`${API_URL}/titan/status`);
+export const triggerTitanScan = (settings) => axios.post(`${API_URL}/titan/scan`, settings);
+export const stopTitanScan = () => axios.post(`${API_URL}/titan/stop`);
+export const getTitanResults = () => axios.get(`${API_URL}/titan/results`);
+export const getTitanInspect = (symbol) => axios.get(`${API_URL}/titan/inspect/${symbol}`);
+
+// --- MARKET SUMMARY API ---
+export const getMarketSummary = () => axios.get(`${API_URL}/market-summary`);

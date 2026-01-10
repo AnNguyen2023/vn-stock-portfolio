@@ -10,11 +10,11 @@ import WLRenameModal from "../modals/WLRenameModal";
 import WLAddTickerModal from "../modals/WLAddTickerModal";
 import ConfirmModal from "../modals/ConfirmModal";
 const WATCHLIST_COLORS = [
-    { active: "bg-purple-500 border-purple-500", dot: "bg-purple-400", badge: "bg-purple-700/50", hover: "hover:border-purple-200 hover:text-purple-500", text: "text-purple-500" },
-    { active: "bg-emerald-600 border-emerald-600", dot: "bg-emerald-500", badge: "bg-emerald-800/50", hover: "hover:border-emerald-200 hover:text-emerald-600", text: "text-emerald-600" },
-    { active: "bg-orange-400 border-orange-400", dot: "bg-orange-300", badge: "bg-orange-600/50", hover: "hover:border-orange-200 hover:text-orange-500", text: "text-orange-500" },
-    { active: "bg-slate-600 border-slate-600", dot: "bg-slate-500", badge: "bg-slate-800/50", hover: "hover:border-slate-300 hover:text-slate-600", text: "text-slate-600" },
-    { active: "bg-blue-600 border-blue-600", dot: "bg-blue-500", badge: "bg-blue-800/50", hover: "hover:border-blue-200 hover:text-blue-600", text: "text-blue-600" },
+    { active: "bg-purple-400/85 border-purple-400", dot: "bg-purple-400", badge: "bg-purple-700/50", hover: "hover:border-purple-200 hover:text-purple-500", text: "text-purple-500" },
+    { active: "bg-emerald-500/85 border-emerald-500", dot: "bg-emerald-500", badge: "bg-emerald-800/50", hover: "hover:border-emerald-200 hover:text-emerald-600", text: "text-emerald-600" },
+    { active: "bg-orange-300/85 border-orange-300", dot: "bg-orange-300", badge: "bg-orange-600/50", hover: "hover:border-orange-200 hover:text-orange-500", text: "text-orange-500" },
+    { active: "bg-slate-500/85 border-slate-500", dot: "bg-slate-500", badge: "bg-slate-800/50", hover: "hover:border-slate-300 hover:text-slate-600", text: "text-slate-600" },
+    { active: "bg-blue-500/85 border-blue-500", dot: "bg-blue-500", badge: "bg-blue-800/50", hover: "hover:border-blue-200 hover:text-blue-600", text: "text-blue-600" },
 ];
 
 export default function WatchlistPro() {
@@ -350,29 +350,29 @@ export default function WatchlistPro() {
                                             )}
                                         </div>
                                     </th>
-                                    <th className="p-4 text-left cursor-pointer hover:bg-slate-100/50 transition-colors" onClick={() => requestSort('ticker')}>
+                                    <th className="p-4 text-left cursor-pointer hover:bg-emerald-100 transition-colors" onClick={() => requestSort('ticker')}>
                                         Mã CK <SortIcon columnKey="ticker" />
                                     </th>
-                                    <th className="p-4 text-right cursor-pointer hover:bg-slate-100/50 transition-colors" onClick={() => requestSort('price')}>
+                                    <th className="p-4 text-right cursor-pointer hover:bg-emerald-100 transition-colors" onClick={() => requestSort('price')}>
                                         Giá TT <SortIcon columnKey="price" />
                                     </th>
-                                    <th className="p-4 text-right cursor-pointer hover:bg-slate-100/50 transition-colors" onClick={() => requestSort('change_pct')}>
+                                    <th className="p-4 text-right cursor-pointer hover:bg-emerald-100 transition-colors" onClick={() => requestSort('change_pct')}>
                                         % Thay đổi <SortIcon columnKey="change_pct" />
                                     </th>
                                     <th className="p-4 text-center">
                                         <div>Xu hướng</div>
                                         <div className="text-[10px] text-slate-800 font-normal">(5 phiên)</div>
                                     </th>
-                                    <th className="p-4 text-right cursor-pointer hover:bg-slate-100/50 transition-colors" onClick={() => requestSort('volume')}>
-                                        KL <SortIcon columnKey="volume" />
+                                    <th className="p-4 text-right cursor-pointer hover:bg-emerald-100 transition-colors" onClick={() => requestSort('pb')}>
+                                        P/B <SortIcon columnKey="pb" />
                                     </th>
-                                    <th className="p-4 text-right cursor-pointer hover:bg-slate-100/50 transition-colors" onClick={() => requestSort('roe')}>
+                                    <th className="p-4 text-right cursor-pointer hover:bg-emerald-100 transition-colors" onClick={() => requestSort('roe')}>
                                         ROE (%) <SortIcon columnKey="roe" />
                                     </th>
-                                    <th className="p-4 text-right cursor-pointer hover:bg-slate-100/50 transition-colors" onClick={() => requestSort('roa')}>
+                                    <th className="p-4 text-right cursor-pointer hover:bg-emerald-100 transition-colors" onClick={() => requestSort('roa')}>
                                         ROA (%) <SortIcon columnKey="roa" />
                                     </th>
-                                    <th className="p-4 text-right cursor-pointer hover:bg-slate-100/50 transition-colors" onClick={() => requestSort('pe')}>
+                                    <th className="p-4 text-right cursor-pointer hover:bg-emerald-100 transition-colors" onClick={() => requestSort('pe')}>
                                         P/E <SortIcon columnKey="pe" />
                                     </th>
                                     <th className="p-4 w-10"></th>

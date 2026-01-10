@@ -7,6 +7,8 @@ import { Toaster, toast } from "sonner";
 
 import SummaryCard from "./components/SummaryCard";
 import PerfBox from "./components/PerfBox";
+import MarketSummary from "./components/MarketSummary";
+import ScrollToTop from "./components/ScrollToTop";
 import CashModal from "./modals/CashModal";
 import TradeModal from "./modals/TradeModal";
 import UndoModal from "./modals/UndoModal";
@@ -18,6 +20,7 @@ import StockTable from "./sections/StockTable";
 import GrowthChart from "./sections/GrowthChart";
 const HistoryTabs = dynamic(() => import("./sections/HistoryTabs"), { ssr: false });
 const WatchlistPro = dynamic(() => import("./sections/WatchlistPro"), { ssr: false });
+const ScannerSection = dynamic(() => import("./sections/ScannerSection"), { ssr: false });
 
 import {
   getPortfolio,
@@ -118,7 +121,7 @@ export default function Dashboard() {
   const [logs, setLogs] = useState([]);
   const [perf, setPerf] = useState(null);
   const [loading, setLoading] = useState(true);
-  const [activeMainTab, setActiveMainTab] = useState("watchlist"); // 'watchlist' hoặc 'growth'
+  const [activeMainTab, setActiveMainTab] = useState("watchlist"); // 'watchlist', 'growth' hoặc 'scanner'
   const [chartData, setChartData] = useState([]);
   const [historicalProfit, setHistoricalProfit] = useState(null);
   const [navHistory, setNavHistory] = useState([]);
@@ -522,7 +525,12 @@ export default function Dashboard() {
           />
         </div>
 
-        {/* MAIN CONTENT TABS (Watchlist / Growth) */}
+        {/* Market Summary - Below Summary Cards */}
+        <div className="mb-6">
+          <MarketSummary />
+        </div>
+
+        {/* MAIN CONTENT TABS */}
         <div className="mb-6">
           <div className="flex items-center gap-1 p-1 bg-slate-100/50 rounded-2xl w-fit mb-4 border border-slate-400">
             <button
@@ -536,6 +544,12 @@ export default function Dashboard() {
               className={`px-6 py-2.5 rounded-xl text-xs font-black uppercase transition-all ${activeMainTab === "growth" ? "bg-white text-emerald-600 shadow-sm" : "text-slate-400 hover:text-slate-600"}`}
             >
               Hiệu suất tăng trưởng
+            </button>
+            <button
+              onClick={() => setActiveMainTab("scanner")}
+              className={`px-6 py-2.5 rounded-xl text-xs font-black uppercase transition-all ${activeMainTab === "scanner" ? "bg-white text-emerald-600 shadow-sm" : "text-slate-400 hover:text-slate-600"}`}
+            >
+              TITAN Scanner
             </button>
           </div>
 
@@ -553,6 +567,8 @@ export default function Dashboard() {
                 totalNav: data?.total_nav,
               }}
             />
+          ) : activeMainTab === "scanner" ? (
+            <ScannerSection />
           ) : (
             <WatchlistPro />
           )}
@@ -620,6 +636,8 @@ export default function Dashboard() {
         <NoteModal {...{ showNoteModal, setShowNoteModal, editingNote, setEditingNote, handleUpdateNote }} />
 
         <Toaster position="top-center" richColors expand={true} closeButton theme="light" />
+
+        <ScrollToTop />
       </div>
     </main>
   );

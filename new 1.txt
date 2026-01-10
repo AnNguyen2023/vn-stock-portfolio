@@ -1,0 +1,35 @@
+
+admin
+Cmctelecom@123
+
+RedGreenBlue2
+
+
+Q08881
+
+@Ssipro2026#
+
+InvestJournal@Zonzon350979#
+
+postgresql://postgres:@Zonzon350979#@db.ksjmuqbxxtjmqcbkrrjp.supabase.co:5432/postgres
+
+postgresql://postgres:%40Zonzon350979#23@db.ksjmuqbxxtjmqcbkrrjp.supabase.co:5432/postgres
+
+
+postgresql://postgres.ksjmuqbxxtjmqcbkrrjp:%40Zonzon350979%23@aws-1-ap-southeast-1.pooler.supabase.com:6543/postgres
+
+https://supabase.com/
+
+
+$env:DATABASE_URL="postgresql+psycopg://USER:PASSWORD@aws-1-ap-southeast-1.pooler.supabase.com:6543/postgres?sslmode=require"
+
+python -c "import models; models.Base.metadata.create_all(bind=models.engine)"
+
+python -c "import models; models.Base.metadata.create_all(bind=models.engine); print('--- KẾT NỐI SUPABASE THÀNH CÔNG RỒI ĐẠI CA! ---')"
+
+
+
+ROE – cao tốt, nhưng quá cao là nguy hiểm
+ROA – càng cao càng tốt, rất khó fake
+
+điều chỉnh vị trí bảng "Thông tin Thị trường" ngay vị trí XXX trong hình, front chữ ko bold, bề ngang lớn hơn 3 ô Vốn, tiền mặt và giá trị cổ phiếu. Với hôm nay T7 ngoài giờ giao dịch, bảng này sẽ láy giá trị ngày giao dịc gần nhất là 2h45 tổng kết phiên ngày thứ 6. còn trong giờ giao dich thì lấy giá trị realtime của thị trườngđiều chỉnh vị trí bảng "Thông tin Thị trường" ngay vị trí XXX trong hình, front chữ ko bold, bề ngang lớn hơn 3 ô Vốn, tiền mặt và giá trị cổ phiếu. Với hôm nay T7 ngoài giờ giao dịch, bảng này sẽ láy giá trị ngày giao dịc gần nhất là 2h45 tổng kết phiên ngày thứ 6. còn trong giờ giao dich thì lấy giá trị realtime của thị trường

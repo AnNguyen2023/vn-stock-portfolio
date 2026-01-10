@@ -38,38 +38,125 @@ def get_financial_ratios(ticker: str, memory_cache_get_fn, memory_cache_set_fn) 
     # 3. Fetch from Vnstock
     try:
         stock = Vnstock().stock(symbol=ticker)
-        df_ratio = stock.finance.ratio(period='yearly', lang='vi')
+        try:
+            df_ratio = stock.finance.ratio(period='yearly', lang='vi')
+        except BaseException as e:
+            print(f"[ADAPTER] vnstock ratio error/limit: {e}")
+            df_ratio = pd.DataFrame()
+
+        if df_ratio is None or df_ratio.empty:
+            return _calculate_fallback_ratios(ticker, stock)
+
+        latest = df_ratio.iloc[0]
+        pe = latest.get(('Chỉ tiêu định giá', 'P/E')) or latest.get('priceToEarning') or 0
+        pb = latest.get(('Chỉ tiêu định giá', 'P/B')) or 0
+        mc_bil = latest.get(('Chỉ tiêu định giá', 'Vốn hóa (Tỷ đồng)'))
+        market_cap = 0
+        if mc_bil:
+            mc_val = float(mc_bil)
+            market_cap = mc_val if mc_val > 1e9 else mc_val * 1e9
         
-        if not df_ratio.empty:
-            latest = df_ratio.iloc[0]
-            pe = latest.get(('Chỉ tiêu định giá', 'P/E')) or latest.get('priceToEarning') or 0
+        roe = latest.get(('Chỉ tiêu khả năng sinh lợi', 'ROE (%)')) or 0
+        roa = latest.get(('Chỉ tiêu khả năng sinh lợi', 'ROA (%)')) or 0
+        
+        # Check if data is essentially empty/zero
+        if all(float(v) == 0 for v in [pe, roe, roa, pb]):
+            return _calculate_fallback_ratios(ticker, stock)
+
+        r_obj = {
+            "pe": float(pe),
+            "pb": float(pb),
+            "market_cap": float(market_cap),
+            "roe": float(roe) * 100,
+            "roa": float(roa) * 100
+        }
+        
+        # Save to Caches
+        memory_cache_set_fn(cache_key, r_obj, 86400)
+        if REDIS_AVAILABLE:
+            redis_client.setex(cache_key, 86400, json.dumps(r_obj))
             
-            mc_bil = latest.get(('Chỉ tiêu định giá', 'Vốn hóa (Tỷ đồng)'))
-            market_cap = 0
-            if mc_bil:
-                mc_val = float(mc_bil)
-                market_cap = mc_val if mc_val > 1e9 else mc_val * 1e9
-            
-            roe = latest.get(('Chỉ tiêu khả năng sinh lợi', 'ROE (%)')) or 0
-            roa = latest.get(('Chỉ tiêu khả năng sinh lợi', 'ROA (%)')) or 0
-            
-            r_obj = {
-                "pe": float(pe),
-                "market_cap": float(market_cap),
-                "roe": float(roe),
-                "roa": float(roa)
-            }
-            
-            # Save to Caches
-            memory_cache_set_fn(cache_key, r_obj, 86400)
-            if REDIS_AVAILABLE:
-                redis_client.setex(cache_key, 86400, json.dumps(r_obj))
-                
-            return r_obj
+        return r_obj
+
     except Exception as e:
-        print(f"[ADAPTER] Vnstock error for {ticker}: {e}")
+        print(f"[ADAPTER] General error for {ticker}: {e}")
+        # Last resort fallback
+        try:
+            return _calculate_fallback_ratios(ticker, Vnstock().stock(symbol=ticker))
+        except:
+            pass
         
-    return {"pe": 0, "market_cap": 0, "roe": 0, "roa": 0}
+    return {"pe": 0, "pb": 0, "market_cap": 0, "roe": 0, "roa": 0}
+
+def _calculate_fallback_ratios(ticker: str, stock_obj) -> dict:
+    """Fallback: Calculate ratios from raw Financial Reports."""
+    try:
+        # 1. Fetch Quarterly Data (4 quarters) with Safe Guards
+        try:
+            df_is = stock_obj.finance.income_statement(period='quarterly', lang='vi')
+            df_bs = stock_obj.finance.balance_sheet(period='quarterly', lang='vi')
+        except BaseException as e:
+             print(f"[ADAPTER] Fallback BCTC fetch error (Rate Limit?): {e}")
+             return {"pe": 0, "pb": 0, "market_cap": 0, "roe": 0, "roa": 0}
+        
+        if df_is.empty or df_bs.empty:
+            return {"pe": 0, "pb": 0, "market_cap": 0, "roe": 0, "roa": 0}
+            
+        # Get latest 4 quarters
+        df_is = df_is.head(4)
+        df_bs_latest = df_bs.iloc[0]
+        
+        # Identify Columns (Dynamic for different sectors)
+        cols_equity = [c for c in df_bs.columns if 'VỐN CHỦ SỞ HỮU' in c.upper() or 'EQUITY' in c.upper()]
+        cols_assets = [c for c in df_bs.columns if 'TỔNG CỘNG TÀI SẢN' in c.upper() or 'ASSETS' in c.upper()]
+        cols_profit = [c for c in df_is.columns if 'SAU THUẾ CỦA CỔ ĐÔNG' in c.upper() or 'NET INCOME' in c.upper()]
+        
+        equity = df_bs_latest[cols_equity[0]] if cols_equity else 0
+        total_assets = df_bs_latest[cols_assets[0]] if cols_assets else 0
+        
+        # Sum 4 quarters profit (Trailing 12M)
+        total_profit = 0
+        if cols_profit:
+             total_profit = df_is[cols_profit[0]].sum()
+             
+        # Get Market Data
+        # Need current price and shares outstanding
+        profile = stock_obj.company.overview()
+        issues_share = 0
+        if not profile.empty:
+            share_col = [c for c in profile.columns if 'issue_share' in c.lower()]
+            if share_col:
+                issues_share = float(profile.iloc[0][share_col[0]])
+        
+        # Fetch current price from crawler (VPS/VCI source is much more reliable)
+        try:
+             from crawler import get_current_prices
+             price_data = get_current_prices([ticker])
+             price = float(price_data.get(ticker, {}).get("price", 0))
+        except:
+             price = 0
+             
+        market_cap = price * issues_share
+        
+        # Calculate Ratios
+        roe = (total_profit / equity * 100) if equity > 0 else 0
+        roa = (total_profit / total_assets * 100) if total_assets > 0 else 0
+        pb = (market_cap / equity) if equity > 0 else 0
+        pe = (price / (total_profit / issues_share)) if (issues_share > 0 and total_profit > 0) else 0
+        
+        print(f"[ADAPTER] Fallback Calc for {ticker}: ROE={roe:.2f}%, ROA={roa:.2f}%, P/B={pb:.2f}")
+        
+        return {
+            "pe": float(pe),
+            "pb": float(pb),
+            "market_cap": float(market_cap),
+            "roe": float(roe), # Already percentage
+            "roa": float(roa)  # Already percentage
+        }
+        
+    except Exception as e:
+        print(f"[ADAPTER] Fallback failed for {ticker}: {e}")
+        return {"pe": 0, "pb": 0, "market_cap": 0, "roe": 0, "roa": 0}
 
 def get_all_symbols():
     """Fetch all symbols by exchange (HSX, HNX, UPCOM)."""

@@ -15,7 +15,7 @@ import models
 from core.db import engine
 from core.redis_client import init_redis
 
-from routers import trading, portfolio, logs, market, watchlist
+from routers import trading, portfolio, logs, market, watchlist, titan
 from tasks import cleanup_expired_data_task
 
 
@@ -61,6 +61,7 @@ app.include_router(trading.router)
 app.include_router(market.router)
 app.include_router(logs.router)
 app.include_router(watchlist.router)
+app.include_router(titan.router)
 
 
 @app.get("/")

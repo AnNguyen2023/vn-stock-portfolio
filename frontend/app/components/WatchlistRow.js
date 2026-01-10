@@ -70,7 +70,7 @@ export default function WatchlistRow({ item, onRemove, isSelected, onToggle }) {
     const theme = getTheme();
 
     return (
-        <tr className={`border-b border-slate-50 hover:bg-slate-200 transition-colors group ${isSelected ? 'bg-orange-50/30' : ''}`}>
+        <tr className={`border-b border-slate-50 hover:bg-emerald-50 transition-colors group ${isSelected ? 'bg-orange-50/30' : ''}`}>
             <td className="p-4 pl-6 text-center">
                 <div
                     onClick={onToggle}
@@ -110,19 +110,19 @@ export default function WatchlistRow({ item, onRemove, isSelected, onToggle }) {
             </td>
 
             <td className="p-4 text-right font-medium text-slate-600 text-sm tabular-nums">
-                {formatCompact(item.volume || 0)}
+                {item.pb ? item.pb.toFixed(2) : "-"}
             </td>
 
             <td className="p-4 text-right font-medium text-slate-600 text-sm tabular-nums">
-                {item.roe ? item.roe.toFixed(2) + "%" : "-"}
+                {item.roe ? item.roe.toFixed(3) + "%" : "-"}
             </td>
 
             <td className="p-4 text-right font-medium text-slate-600 text-sm tabular-nums">
-                {item.roa ? item.roa.toFixed(2) + "%" : "-"}
+                {item.roa ? item.roa.toFixed(3) + "%" : "-"}
             </td>
 
             <td className="p-4 text-right font-medium text-slate-600 text-sm tabular-nums">
-                {item.pe ? item.pe.toFixed(1) : "-"}
+                {item.pe ? item.pe.toFixed(2) : "-"}
             </td>
 
             <td className="p-4 text-center opacity-0 group-hover:opacity-100 transition-opacity">

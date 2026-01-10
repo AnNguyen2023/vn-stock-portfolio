@@ -5,7 +5,7 @@ from datetime import datetime, date
 from decimal import Decimal
 import enum
 
-from sqlalchemy import Column, Integer, String, Numeric, DateTime, Date, Enum, UniqueConstraint, ForeignKey
+from sqlalchemy import Column, Integer, String, Numeric, DateTime, Date, Enum, UniqueConstraint, ForeignKey, Boolean
 from sqlalchemy.orm import relationship
 
 from core.db import Base
@@ -129,3 +129,17 @@ class WatchlistTicker(Base):
     watchlist_id = Column(Integer, ForeignKey("watchlists.id", ondelete="CASCADE"))
     ticker = Column(String(20), index=True)
     added_at = Column(DateTime, default=datetime.now)
+
+class TitanScanResult(Base):
+    """Bảng lưu kết quả quét từ TITAN Adaptive Scanner"""
+    __tablename__ = "titan_scan_results"
+    
+    id = Column(Integer, primary_key=True, index=True)
+    symbol = Column(String(20), index=True)
+    close_price = Column(Numeric(20, 4))
+    alpha = Column(Numeric(20, 4))
+    is_valid = Column(Boolean, default=False)
+    is_buy_signal = Column(Boolean, default=False)
+    trend_strength = Column(String(20))
+    optimal_length = Column(Integer)
+    scanned_at = Column(DateTime, default=datetime.now, index=True)
