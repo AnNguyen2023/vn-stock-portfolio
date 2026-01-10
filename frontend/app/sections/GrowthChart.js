@@ -95,12 +95,12 @@ export default function GrowthChart({
     return null;
   };
   return (
-    <div className="mb-6 bg-white rounded-2xl shadow-xl border border-slate-400 overflow-visible relative z-10">
+    <div className="mb-6 bg-slate-50 rounded-2xl shadow-xl border border-slate-400 overflow-visible relative z-10">
 
       {/* --- HEADER BIỂU ĐỒ: TIÊU ĐỀ, CHU KỲ & SO SÁNH --- */}
-      <div className="p-4 bg-slate-50/50 border-b border-slate-300 flex flex-col md:flex-row justify-between md:items-center gap-4">
-        <h2 className="flex items-center gap-2 text-xl font-bold text-slate-600 uppercase tracking-tight">
-          <TrendingUp size={20} className="text-slate-600" />
+      <div className="p-4 bg-slate-100/80 border-b border-slate-300 flex flex-col md:flex-row justify-between md:items-center gap-4">
+        <h2 className="flex items-center gap-2 text-xl font-bold text-slate-700 uppercase tracking-tight">
+          <TrendingUp size={20} className="text-slate-700" />
           Tăng trưởng (%)
         </h2>
 
@@ -175,18 +175,21 @@ export default function GrowthChart({
           mounted && (
             <ResponsiveContainer width="100%" height="100%" debounce={50} minWidth={0} minHeight={0}>
               <LineChart data={chartData} margin={{ top: 10, right: 10, left: -20, bottom: 0 }}>
-                <CartesianGrid strokeDasharray="3 3" stroke="#e2e8f0" />
+                <CartesianGrid strokeDasharray="2 2" stroke="#cbd5e1" vertical={true} horizontal={true} />
                 <XAxis
                   dataKey="date"
                   axisLine={false}
                   tickLine={false}
                   tick={{ fill: '#64748b', fontSize: 10, fontWeight: 700 }}
                   dy={10}
+                  interval="preserveStartEnd"
+                  minTickGap={15}
                   tickFormatter={(val) => val ? val.slice(5).split('-').reverse().join('/') : val}
                 />
                 <YAxis
                   axisLine={false}
                   tickLine={false}
+                  tickCount={10}
                   tick={{ fill: '#64748b', fontSize: 10, fontWeight: 700 }}
                   tickFormatter={(val) => `${val > 0 ? '+' : ''}${val}%`}
                 />
@@ -205,12 +208,14 @@ export default function GrowthChart({
                     return <Line key="PORTFOLIO" type="monotone" dataKey="PORTFOLIO" name="Danh mục" stroke="#2563eb" strokeWidth={3} dot={false} activeDot={{ r: 6, strokeWidth: 0, fill: '#2563eb' }} />;
                   }
                   if (ticker === 'VNINDEX') {
-                    return <Line key="VNINDEX" type="monotone" dataKey="VNINDEX" name="VN-Index" stroke="#94a3b8" strokeWidth={2} dot={false} strokeDasharray="5 5" strokeOpacity={0.7} />;
+                    // VN-Index: Đậm hơn (3px), nét liền (solid), màu xám đậm chuyên nghiệp
+                    return <Line key="VNINDEX" type="monotone" dataKey="VNINDEX" name="VN-Index" stroke="#64748b" strokeWidth={3} dot={false} strokeOpacity={0.9} />;
                   }
                   const stockOnlyList = selectedComparisons.filter(t => t !== 'PORTFOLIO' && t !== 'VNINDEX');
                   const colorIdx = stockOnlyList.indexOf(ticker);
                   const color = COLORS[colorIdx % COLORS.length];
-                  return <Line key={ticker} type="monotone" dataKey={ticker} name={ticker} stroke={color} strokeWidth={2} dot={false} activeDot={{ r: 4, strokeWidth: 0 }} />;
+                  // Cổ phiếu lẻ: Nét mỏng hơn (1.5px) để tôn vinh Danh mục & VN-Index
+                  return <Line key={ticker} type="monotone" dataKey={ticker} name={ticker} stroke={color} strokeWidth={1.5} dot={false} activeDot={{ r: 4, strokeWidth: 0 }} />;
                 })}
               </LineChart>
             </ResponsiveContainer>

@@ -146,6 +146,7 @@ export default function Dashboard() {
           portfolioSeries = resG?.data?.portfolio || [];
         } catch (e) {
           console.warn("Không lấy được chart-growth:", e);
+          toast.error("Không tải được dữ liệu tăng trưởng", { description: "Vui lòng kiểm tra kết nối Backend." });
           portfolioSeries = [];
         }
       }

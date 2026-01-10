@@ -13,7 +13,8 @@ export default function useDashboardData() {
     const [portfolioLastUpdated, setPortfolioLastUpdated] = useState(new Date());
 
     // Date Filters
-    const [startDate, setStartDate] = useState(new Date(Date.now() - 7 * 24 * 60 * 60 * 1000).toLocaleDateString('en-CA'));
+    // Date Filters: Mặc định lùi 30 ngày để xem được nhiều dữ liệu hơn
+    const [startDate, setStartDate] = useState(new Date(Date.now() - 30 * 24 * 60 * 60 * 1000).toLocaleDateString('en-CA'));
     const [endDate, setEndDate] = useState(new Date().toLocaleDateString('en-CA'));
 
     const fetchAllData = useCallback(async () => {
@@ -26,25 +27,18 @@ export default function useDashboardData() {
 
             setLoading(false);
 
-            getAuditLog()
-                .then((resL) => {
-                    if (resL?.data) setLogs(resL.data);
-                })
-                .catch((err) => console.error("Lỗi tải Nhật ký:", err));
-
-            getPerformance()
-                .then((resEf) => {
-                    if (resEf?.data) setPerf(resEf.data);
-                })
-                .catch((err) => console.error("Lỗi tải Hiệu suất:", err));
-
-            if (typeof getNavHistory === "function") {
-                getNavHistory(startDate, endDate)
-                    .then((res) => {
-                        if (res?.data) setNavHistory(res.data);
-                    })
-                    .catch(() => { });
-            }
+            // Parallel fetch for history data
+            Promise.all([
+                getAuditLog().then(res => res.data).catch(() => []),
+                getPerformance().then(res => res.data).catch(() => null),
+                getNavHistory(startDate, endDate).then(res => res.data).catch(() => []),
+                getHistorySummary(startDate, endDate).then(res => res.data).catch(() => ({ total_profit: 0, trade_count: 0 }))
+            ]).then(([l, p, n, h]) => {
+                if (l) setLogs(l);
+                if (p) setPerf(p);
+                if (n) setNavHistory(n);
+                if (h) setHistoricalProfit(h);
+            });
         } catch (error) {
             console.error("LỖI KẾT NỐI BACKEND:", error);
             setLoading(false);

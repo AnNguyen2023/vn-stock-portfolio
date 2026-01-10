@@ -165,18 +165,20 @@ export default function StockTable({ data, buyForm, setBuyForm, setSellForm, set
                         <div className="text-[10px] text-slate-400 font-medium truncate max-w-[120px]">Công ty cổ phần {s.ticker}</div>
                       </div>
                     </td>
-                    <td className="p-4 text-right font-bold text-slate-700 text-sm border-r border-slate-200 last:border-r-0">{s.volume.toLocaleString()}</td>
+                    <td className="p-4 text-right font-bold text-slate-700 text-sm border-r border-slate-200 last:border-r-0">{s.volume.toLocaleString('en-US')}</td>
                     <td className="p-4 text-right text-sm font-medium text-slate-500 border-r border-slate-200 last:border-r-0">
-                      <span className="tabular-nums">{(s.avg_price * 1000).toLocaleString('vi-VN')}</span>
+                      <span className="tabular-nums">{(s.avg_price * 1000).toLocaleString('en-US')} <span className="text-[10px] text-slate-400 font-bold ml-1">đ</span></span>
                     </td>
                     <td className="p-4 text-right text-sm border-r border-slate-200 last:border-r-0">
-                      <div className={`font-bold tabular-nums ${theme.text}`}>{(s.current_price * 1000).toLocaleString('vi-VN')}</div>
+                      <div className={`font-bold tabular-nums ${theme.text}`}>{(s.current_price * 1000).toLocaleString('en-US')} <span className="text-[10px] opacity-60 ml-0.5">đ</span></div>
                     </td>
-                    <td className="p-4 text-right text-sm font-bold text-slate-700 border-r border-slate-200 last:border-r-0">{Math.floor(s.current_value).toLocaleString()}</td>
+                    <td className="p-4 text-right text-sm font-bold text-slate-700 border-r border-slate-200 last:border-r-0">
+                      {Math.floor(s.current_value).toLocaleString('en-US')} <span className="text-[10px] text-slate-400 font-bold ml-1">đ</span>
+                    </td>
 
                     <td className="p-4 text-right border-r border-slate-200 last:border-r-0">
                       <span className={`text-base font-medium ${isProfit ? 'text-emerald-600' : 'text-rose-500'}`}>
-                        {Math.abs(Math.floor(s.profit_loss)).toLocaleString()}
+                        {Math.abs(Math.floor(s.profit_loss)).toLocaleString('en-US')} <span className="text-[10px] font-bold ml-0.5 whitespace-nowrap">đ</span>
                       </span>
                       <div className="flex items-center gap-2">
                         <StatusBadge value={s.profit_percent.toFixed(2)} showIcon={false} />
@@ -198,8 +200,8 @@ export default function StockTable({ data, buyForm, setBuyForm, setSellForm, set
 
                     <td className="p-4">
                       <div className="flex justify-center gap-2">
-                        <button onClick={() => { setBuyForm({ ...buyForm, ticker: s.ticker }); setShowBuy(true) }} className="p-1.5 bg-emerald-50 text-emerald-600 rounded-lg hover:bg-emerald-600 hover:text-white transition-all shadow-sm"><PlusCircle size={18} /></button>
-                        <button onClick={() => { setSellForm({ ticker: s.ticker, volume: s.volume, price: '', available: s.available }); setShowSell(true) }} className="p-1.5 bg-rose-50 text-rose-500 rounded-lg hover:bg-rose-500 hover:text-white transition-all shadow-sm"><MinusCircle size={18} /></button>
+                        <button onClick={() => { setBuyForm({ ...buyForm, ticker: s.ticker }); setShowBuy(true) }} className="p-2 bg-emerald-50 text-emerald-600 rounded-lg hover:bg-emerald-600 hover:text-white transition-all shadow-sm"><PlusCircle size={21} /></button>
+                        <button onClick={() => { setSellForm({ ticker: s.ticker, volume: s.volume, price: '', available: s.available }); setShowSell(true) }} className="p-2 bg-rose-50 text-rose-500 rounded-lg hover:bg-rose-500 hover:text-white transition-all shadow-sm"><MinusCircle size={21} /></button>
                       </div>
                     </td>
                   </tr>

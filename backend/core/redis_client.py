@@ -42,6 +42,8 @@ def get_redis() -> Optional[redis.Redis]:
     _last_check_ts = now
 
     try:
+        # rediss:// in the URL already enables SSL for Upstash.
+        # Simple is better to avoid version-specific keyword arguments.
         r = redis.from_url(REDIS_URL, decode_responses=True)
         r.ping()
         _redis = r

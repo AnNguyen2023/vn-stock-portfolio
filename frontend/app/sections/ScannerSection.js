@@ -18,27 +18,27 @@ export default function ScannerSection() {
             label: "Nhanh",
             description: "Lọc watchlist mỗi ngày",
             settings: {
-                fee_bps: 15, slippage_bps: 5,
+                fee_bps: 18, slippage_bps: 7,
                 wf_train_bars: 252, wf_test_bars: 63, wf_step_bars: 63, wf_min_folds: 3,
-                stability_lambda: 0.8, trade_penalty_bps: 2
+                stability_lambda: 0.9, trade_penalty_bps: 2
             }
         },
         "Balanced": {
             label: "Cân bằng",
             description: "Khuyến nghị vốn vừa & nhỏ",
             settings: {
-                fee_bps: 20, slippage_bps: 10,
+                fee_bps: 22, slippage_bps: 10,
                 wf_train_bars: 252, wf_test_bars: 63, wf_step_bars: 21, wf_min_folds: 4,
-                stability_lambda: 1.0, trade_penalty_bps: 3
+                stability_lambda: 1.1, trade_penalty_bps: 3
             }
         },
         "Tight": {
             label: "Chặt",
             description: "Ít kèo nhưng chất",
             settings: {
-                fee_bps: 25, slippage_bps: 15,
+                fee_bps: 25, slippage_bps: 12,
                 wf_train_bars: 252, wf_test_bars: 63, wf_step_bars: 10, wf_min_folds: 5,
-                stability_lambda: 1.4, trade_penalty_bps: 5
+                stability_lambda: 1.4, trade_penalty_bps: 4
             }
         }
     };
@@ -173,20 +173,22 @@ export default function ScannerSection() {
                                 <button
                                     onClick={() => setActiveMode(key)}
                                     disabled={status.is_running}
-                                    className={`px-3 py-2 rounded-xl text-xs font-bold transition-all flex flex-col items-center min-w-[80px] ${activeMode === key
+                                    className={`px-3 py-2 rounded-xl text-sm font-bold transition-all flex flex-col items-center min-w-[80px] ${activeMode === key
                                         ? "bg-white text-emerald-600 shadow-sm"
-                                        : "text-slate-500 hover:text-slate-700"
+                                        : "text-slate-700 hover:text-slate-900"
                                         } ${status.is_running ? "opacity-50 cursor-not-allowed" : ""}`}
                                 >
                                     <span>{mode.label}</span>
                                 </button>
                                 {/* Mode Tooltip */}
-                                <div className="hidden group-hover/mode:block absolute bottom-full left-1/2 -translate-x-1/2 mb-2 w-48 z-50 animate-in fade-in zoom-in duration-200">
-                                    <div className="bg-slate-800 text-white text-[10px] p-2 rounded-lg shadow-xl text-center">
-                                        <p className="font-bold mb-0.5">{mode.label}</p>
-                                        <p className="opacity-80">{mode.description}</p>
+                                <div className="hidden group-hover/mode:block absolute top-full left-1/2 -translate-x-1/2 mt-3 w-52 z-50 animate-in fade-in zoom-in-95 duration-200">
+                                    {/* Arrow pointing up */}
+                                    <div className="absolute bottom-full left-1/2 -translate-x-1/2 border-[6px] border-transparent border-b-slate-700"></div>
+
+                                    <div className="bg-slate-700 text-white p-3.5 rounded-xl shadow-2xl text-center border border-white/10 backdrop-blur-sm">
+                                        <p className="font-bold text-[13px] mb-1 text-emerald-400 uppercase tracking-wide">{mode.label}</p>
+                                        <p className="text-[12px] font-medium text-slate-300 leading-relaxed">{mode.description}</p>
                                     </div>
-                                    <div className="absolute top-full left-1/2 -translate-x-1/2 border-4 border-transparent border-t-slate-800"></div>
                                 </div>
                             </div>
                         ))}
@@ -196,7 +198,7 @@ export default function ScannerSection() {
                         <button
                             onClick={handleStopScan}
                             disabled={stopping}
-                            className={`flex items-center gap-2 px-6 py-3 rounded-2xl font-bold uppercase text-xs transition-all bg-rose-50 text-rose-500 hover:bg-rose-100 border border-rose-200 ${stopping ? "opacity-50 cursor-not-allowed" : ""}`}
+                            className={`flex items-center gap-2 px-6 py-3 rounded-2xl font-bold uppercase text-sm transition-all bg-rose-50 text-rose-500 hover:bg-rose-100 border border-rose-200 ${stopping ? "opacity-50 cursor-not-allowed" : ""}`}
                         >
                             <Square size={16} fill="currentColor" />
                             Dừng quét
@@ -205,8 +207,8 @@ export default function ScannerSection() {
                     <button
                         onClick={handleStartScan}
                         disabled={status.is_running || loading}
-                        className={`flex items-center gap-2 px-6 py-3 rounded-2xl font-bold uppercase text-xs transition-all ${status.is_running || loading
-                            ? "bg-slate-100 text-slate-400 cursor-not-allowed"
+                        className={`flex items-center gap-2 px-6 py-3 rounded-2xl font-bold uppercase text-sm transition-all ${status.is_running || loading
+                            ? "bg-slate-100 text-slate-600 cursor-not-allowed"
                             : "bg-emerald-500 text-white hover:bg-emerald-600 shadow-lg shadow-emerald-100"
                             }`}
                     >
@@ -248,19 +250,19 @@ export default function ScannerSection() {
                 <table className="w-full text-left border-collapse">
                     <thead className="bg-slate-50/50 text-slate-500 text-[13px] uppercase font-bold tracking-[0.12em] border-b border-slate-100">
                         <tr>
-                            <th className="px-6 py-4 text-left cursor-pointer hover:bg-slate-100/50 transition-colors" onClick={() => requestSort('symbol')}>
+                            <th className="px-6 py-4 text-left cursor-pointer hover:bg-emerald-100 transition-colors" onClick={() => requestSort('symbol')}>
                                 Mã <SortIcon columnKey="symbol" />
                             </th>
-                            <th className="px-4 py-4 text-left cursor-pointer hover:bg-slate-100/50 transition-colors" onClick={() => requestSort('close_price')}>
+                            <th className="px-4 py-4 text-left cursor-pointer hover:bg-emerald-100 transition-colors" onClick={() => requestSort('close_price')}>
                                 Giá TT <SortIcon columnKey="close_price" />
                             </th>
-                            <th className="px-4 py-4 text-right cursor-pointer hover:bg-slate-100/50 transition-colors" onClick={() => requestSort('alpha')}>
+                            <th className="px-4 py-4 text-right cursor-pointer hover:bg-emerald-100 transition-colors" onClick={() => requestSort('alpha')}>
                                 Alpha <SortIcon columnKey="alpha" />
                             </th>
-                            <th className="px-4 py-4 text-center cursor-pointer hover:bg-slate-100/50 transition-colors" onClick={() => requestSort('optimal_length')}>
+                            <th className="px-4 py-4 text-center cursor-pointer hover:bg-emerald-100 transition-colors" onClick={() => requestSort('optimal_length')}>
                                 Opt Len <SortIcon columnKey="optimal_length" />
                             </th>
-                            <th className="px-4 py-4 text-center cursor-pointer hover:bg-slate-100/50 transition-colors" onClick={() => requestSort('signal')}>
+                            <th className="px-4 py-4 text-center cursor-pointer hover:bg-emerald-100 transition-colors" onClick={() => requestSort('signal')}>
                                 Tín hiệu <SortIcon columnKey="signal" />
                             </th>
                         </tr>
@@ -268,7 +270,7 @@ export default function ScannerSection() {
                     <tbody className="divide-y divide-slate-50">
                         {sortedResults.length > 0 ? (
                             sortedResults.map((r, i) => (
-                                <tr key={i} className="hover:bg-slate-200 transition-colors group">
+                                <tr key={i} className="hover:bg-emerald-50 transition-colors group">
                                     <td className="px-4 py-4">
                                         <span className="font-semibold text-slate-900 group-hover:text-emerald-600 transition-colors text-[15px]">{r.symbol}</span>
                                     </td>

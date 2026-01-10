@@ -87,32 +87,42 @@ def _process_single_ticker(t: str, p_info: dict) -> dict:
 
 
 def seed_index_data_task() -> None:
-    """Worker: nhặt 1 năm dữ liệu VNINDEX về kho."""
-    print("--- [KHO] Tèo em đang chuẩn bị đi nhặt VN-INDEX ---")
-    live_data = crawler.get_historical_prices("VNINDEX", period="1y")
-    if not live_data:
-        return
-
+    """Worker: nhặt 1 năm dữ liệu VNINDEX, VN30, HNX30 về kho."""
+    print("--- [KHO] Tèo em đang chuẩn bị đi nhặt VNINDEX, VN30, HNX30 ---")
+    
+    indices = ["VNINDEX", "VN30", "HNX30"]
+    total_count = 0
+    
     with SessionLocal() as db:
-        count = 0
-        for item in live_data:
-            try:
-                d = datetime.strptime(item["date"], "%Y-%m-%d").date()
-                exist = db.query(models.HistoricalPrice).filter_by(ticker="VNINDEX", date=d).first()
-                if not exist:
-                    db.add(
-                        models.HistoricalPrice(
-                            ticker="VNINDEX",
-                            date=d,
-                            close_price=Decimal(str(item["close"])),
-                        )
-                    )
-                    count += 1
-            except Exception:
+        for symbol in indices:
+            print(f"--- [KHO] Đang lấy {symbol} ---")
+            live_data = crawler.get_historical_prices(symbol, period="1y")
+            if not live_data:
                 continue
+
+            count = 0
+            for item in live_data:
+                try:
+                    d = datetime.strptime(item["date"], "%Y-%m-%d").date()
+                    exist = db.query(models.HistoricalPrice).filter_by(ticker=symbol, date=d).first()
+                    if not exist:
+                        db.add(
+                            models.HistoricalPrice(
+                                ticker=symbol,
+                                date=d,
+                                close_price=Decimal(str(item["close"])),
+                                volume=Decimal(str(item.get("volume", 0))),
+                                value=Decimal(str(item.get("value", 0))),
+                            )
+                        )
+                        count += 1
+                except Exception:
+                    continue
+            total_count += count
+        
         db.commit()
 
-    print(f"--- [XONG] Đã cất thêm {count} ngày VN-INDEX vào kho! ---")
+    print(f"--- [XONG] Đã cất thêm tổng cộng {total_count} bản ghi Index vào kho! ---")
 
 
 def sync_portfolio_history_task(tickers: Iterable[str], sleep_sec: float = 2.0) -> None:
@@ -136,6 +146,8 @@ def sync_portfolio_history_task(tickers: Iterable[str], sleep_sec: float = 2.0) 
                                     ticker=t,
                                     date=d,
                                     close_price=Decimal(str(item["close"])),
+                                    volume=Decimal(str(item.get("volume", 0))),
+                                    value=Decimal(str(item.get("value", 0))),
                                 )
                             )
                     except Exception:
@@ -170,6 +182,8 @@ def sync_historical_task(ticker: str, period: str) -> None:
                                 ticker=ticker,
                                 date=d,
                                 close_price=Decimal(str(item["close"])),
+                                volume=Decimal(str(item.get("volume", 0))),
+                                value=Decimal(str(item.get("value", 0))),
                             )
                         )
                 except Exception:

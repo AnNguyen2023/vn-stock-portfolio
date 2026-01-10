@@ -19,7 +19,7 @@ export default function RealizedProfit({ historicalProfit, navHistory }) {
                             <p className="text-[15px] text-slate-700 font-normal uppercase mb-2 tracking-[0.1em]">Tổng lãi/lỗ ròng</p>
                             <p className={`text-[26px] font-bold tracking-tight ${historicalProfit.total_profit >= 0 ? 'text-emerald-600' : 'text-rose-600'}`}>
                                 {historicalProfit.total_profit >= 0 ? '+' : ''}{Math.floor(historicalProfit.total_profit).toLocaleString('en-US')}
-                                <span className="text-[10px] font-bold text-slate-400 ml-1.5 uppercase tracking-wider italic">vnd</span>
+                                <span className="text-[11px] font-extrabold text-slate-400 ml-1.5 uppercase tracking-wider">VND</span>
                             </p>
                             <div className="mt-6 pt-4 border-t border-slate-100 flex justify-between items-center">
                                 <span className="text-[15px] text-slate-700 font-normal uppercase tracking-wider">Số lệnh đã chốt</span>
@@ -46,7 +46,7 @@ export default function RealizedProfit({ historicalProfit, navHistory }) {
                                 <div className="space-y-1 text-right">
                                     <p className="text-[12px] text-slate-500 font-medium uppercase tracking-wider">Net nộp rút</p>
                                     <p className="text-[22px] font-semibold text-slate-700">
-                                        {navHistory.summary.net_flow >= 0 ? '+' : ''}{Math.floor(navHistory.summary.net_flow).toLocaleString()} <span className="text-[11px] text-slate-400 font-normal">VND</span>
+                                        {navHistory.summary.net_flow >= 0 ? '+' : ''}{Math.floor(navHistory.summary.net_flow).toLocaleString('en-US')} <span className="text-[11px] font-extrabold text-slate-400 uppercase tracking-wider">VND</span>
                                     </p>
                                 </div>
                             </div>

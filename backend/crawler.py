@@ -9,6 +9,7 @@ import requests
 
 # --- CẤU HÌNH ---
 CACHE_DURATION = 30  # thời gian cache (giây)
+INDICES = ["VNINDEX", "VN30", "HNX30", "HNX", "UPCOM", "HNXINDEX", "UPCOMINDEX"]
 
 # --- CẤU HÌNH REDIS CACHE ---
 try:
@@ -19,34 +20,7 @@ except:
     REDIS_AVAILABLE = False
     print("[CRAWLER] Redis không khả dụng, chạy không cache")
 
-def get_prices_from_vps(tickers: list) -> dict:
-    """
-    Lấy giá real-time từ VPS API (Nhanh và không giới hạn)
-    """
-    if not tickers:
-        return {}
-    
-    try:
-        url = f"https://bgapidatafeed.vps.com.vn/getliststockdata/{','.join(tickers)}"
-        response = requests.get(url, timeout=5)
-        if response.status_code == 200:
-            data = response.json()
-            result = {}
-            for item in data:
-                sym = item.get('sym')
-                if sym:
-                    # VPS trả về đơn vị 1 (vd: 96.5), cần nhân 1000 cho VND
-                    result[sym] = {
-                        "price": float(item.get('lastPrice') or item.get('r') or 0) * 1000,
-                        "ref": float(item.get('r') or 0) * 1000,
-                        "ceiling": float(item.get('c') or 0) * 1000,
-                        "floor": float(item.get('f') or 0) * 1000,
-                        "volume": float(item.get('lot') or 0) * 10 # lot là khối lượng (thường x10)
-                    }
-            return result
-    except Exception as e:
-        print(f"[CRAWLER] Lỗi lấy giá từ VPS: {e}")
-    return {}
+from adapters.vps_adapter import get_realtime_prices_vps as get_prices_from_vps
 
 def get_current_prices(tickers: list) -> dict:
     """
@@ -68,9 +42,15 @@ def get_current_prices(tickers: list) -> dict:
     result = get_prices_from_vps(tickers)
     
     # 3. NẾU THIẾU MÃ HOẶC VPS LỖI -> GỌI VCI (VNSTOCK3) LÀM FALLBACK
+    # VPS often fails for Indices, so this fallback is common for them.
     missing_tickers = [t for t in tickers if t not in result or result[t]["price"] == 0]
     
     if missing_tickers:
+        # Check Backoff
+        if REDIS_AVAILABLE and redis_client.get("vci_rate_limit_backoff"):
+            print(f"[CRAWLER] VCI Backoff active. Skipping fallback for {len(missing_tickers)} tickers.")
+            return result
+            
         try:
             print(f"[CRAWLER] Lấy {len(missing_tickers)} mã từ VCI làm fallback...")
             df = Trading(source='VCI').price_board(missing_tickers)
@@ -84,6 +64,7 @@ def get_current_prices(tickers: list) -> dict:
                         c_price = row[('match', 'ceiling_price')]
                         f_price = row[('match', 'floor_price')]
                         m_vol = row[('match', 'match_vol')]
+                        # total_val = row.get('totalValue') # if available
                         
                         price = float(m_price or r_price or 0)
                         
@@ -92,20 +73,30 @@ def get_current_prices(tickers: list) -> dict:
                             "ref": float(r_price or 0),
                             "ceiling": float(c_price or 0),
                             "floor": float(f_price or 0),
-                            "volume": float(m_vol or 0)
+                            "volume": float(m_vol or 0),
+                            "value": 0 # Default 0 as VCI price_board doesn't seem to have it for now
                         }
                     except:
                         # Fallback basic
                         symbol = row.get('ticker') or row.get('symbol') or row.iloc[0]
                         price = row.get('lastPrice') or row.get('referencePrice') or 0
+                        
+                        final_price = float(price)
+                        # Only apply multiplier if it is NOT an index and price is low (likely 1000 VND unit)
+                        is_index = symbol.upper() in INDICES
+                        if final_price < 10000 and not is_index:
+                             final_price *= 1000
+                             
                         result[symbol] = {
-                            "price": float(price) * 1000 if float(price) < 10000 else float(price),
-                            "ref": 0, "ceiling": 0, "floor": 0, "volume": 0
+                            "price": final_price,
+                            "ref": 0, "ceiling": 0, "floor": 0, "volume": 0, "value": 0
                         }
         except BaseException as e:
             print(f"[CRAWLER] Lỗi lấy giá từ VCI (fallback): {e}")
+            # Rate limit hit -> Enable global backoff for 60s
+            if REDIS_AVAILABLE:
+                redis_client.setex("vci_rate_limit_backoff", 60, "true")
             # Nếu VCI lỗi hoặc Rate Limit (SystemExit), ta vẫn tiếp tục với những mã đã lấy được từ VPS
-            # Nếu VCI lỗi (vd: rate limit), ta vẫn tiếp tục với những mã đã lấy được từ VPS
 
     # Lưu vào Redis cache (merge với dữ liệu cũ nếu có)
     if REDIS_AVAILABLE and result:
@@ -127,6 +118,11 @@ def get_historical_prices(ticker: str, period: str = "1m") -> list:
     """
     Lấy dữ liệu lịch sử bằng vnstock3
     """
+    # Check Backoff
+    if REDIS_AVAILABLE and redis_client.get("vci_rate_limit_backoff"):
+        print(f"[CRAWLER] VCI Backoff active. Skipping historical fetch for {ticker}.")
+        return []
+        
     try:
         end_date = datetime.now().strftime('%Y-%m-%d')
         
@@ -142,6 +138,8 @@ def get_historical_prices(ticker: str, period: str = "1m") -> list:
             df = df.reset_index()
             result = []
             
+            is_index = ticker.upper() in INDICES
+            
             for _, row in df.iterrows():
                 # vnstock3 dùng cột 'time' hoặc 'date'
                 time_val = row.get('time') or row.get('date')
@@ -150,12 +148,15 @@ def get_historical_prices(ticker: str, period: str = "1m") -> list:
                 # vnstock3 history is usually in 1000 VND units (e.g. 96.5)
                 # while price_board is in VND (e.g. 96500). We unify to VND.
                 final_close = float(close_val)
-                if final_close < 10000: # Heuristic to detect 1000 VND units
+                if final_close < 10000 and not is_index: # Heuristic: exclude indices
                     final_close *= 1000
+
+                vol_val = row.get('volume') or row.get('Volume') or 0
 
                 result.append({
                     "date": time_val.strftime('%Y-%m-%d') if hasattr(time_val, 'strftime') else str(time_val),
-                    "close": final_close
+                    "close": final_close,
+                    "volume": float(vol_val)
                 })
             
             return result
@@ -166,4 +167,7 @@ def get_historical_prices(ticker: str, period: str = "1m") -> list:
     except BaseException as e:
         # Bắt BaseException để xử lý cả SystemExit từ vnstock3 (Rate limit)
         print(f"[CRAWLER] Lỗi lấy lịch sử {ticker} từ vnstock3: {e}")
+        # Rate limit hit -> Enable global backoff for 60s
+        if REDIS_AVAILABLE:
+            redis_client.setex("vci_rate_limit_backoff", 60, "true")
         return []

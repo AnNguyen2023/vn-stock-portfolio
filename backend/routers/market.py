@@ -3,7 +3,7 @@ from fastapi import APIRouter, Depends, BackgroundTasks
 from sqlalchemy.orm import Session
 from datetime import timedelta, date
 
-from sqlalchemy import cast, Date
+from sqlalchemy import cast, Date, text
 
 import models
 from core.db import get_db
@@ -69,6 +69,24 @@ def get_historical(
     }
 
 
+@router.get("/migrate-value")
+def migrate_value_column(db: Session = Depends(get_db)):
+    try:
+        # Check if column exists
+        check_sql = text("SELECT column_name FROM information_schema.columns WHERE table_name='historical_prices' AND column_name='value'")
+        result = db.execute(check_sql).fetchone()
+        
+        if result:
+            return {"status": "skipped", "message": "Column 'value' already exists"}
+        
+        # Add column
+        db.execute(text("ALTER TABLE historical_prices ADD COLUMN value NUMERIC DEFAULT 0"))
+        db.commit()
+        return {"status": "success", "message": "Added column 'value'"}
+    except Exception as e:
+        return {"status": "error", "message": str(e)}
+
+
 @router.get("/trending/{ticker}")
 def get_trending(ticker: str):
     """Get 5-session trending indicator for a ticker"""
@@ -88,93 +106,142 @@ def get_market_summary(db: Session = Depends(get_db)):
     indices = ["VNINDEX", "VN30", "HNX30"]
     results = []
     
-    # Try vnstock3 first
-    try:
-        print(f"[MARKET] Trying vnstock3 Trading.price_board for {indices}")
-        df = Trading(source='VCI').price_board(indices)
-        
-        if df is not None and not df.empty:
-            print(f"[MARKET] vnstock3 returned data with shape: {df.shape}")
-            
-            for idx, index_name in enumerate(indices):
-                try:
-                    row = df.iloc[idx]
-                    
-                    # Get price data
-                    match_price = row[('match', 'match_price')]
-                    ref_price = row[('match', 'reference_price')]
-                    match_vol = row[('match', 'match_vol')]
-                    
-                    price = float(match_price or ref_price or 0)
-                    ref = float(ref_price or 0)
-                    
-                    if price > 0 and ref > 0:
-                        change = price - ref
-                        change_pct = (change / ref * 100)
-                        volume = float(match_vol or 0)
-                        
-                        # Try to get total value
-                        try:
-                            total_val = row[('match', 'total_val')]
-                            value = float(total_val or 0) / 1e9
-                        except:
-                            value = 0
-                        
-                        # Check if market is closed
-                        now = datetime.now()
-                        is_weekend = now.weekday() >= 5
-                        is_closed = is_weekend or now.hour < 9 or now.hour >= 15
-                        
-                        results.append({
-                            "index": index_name,
-                            "price": round(price, 2),
-                            "change": round(change, 2),
-                            "change_pct": round(change_pct, 2),
-                            "volume": int(volume),
-                            "value": round(value, 2),
-                            "is_closed": is_closed
-                        })
-                except Exception as e:
-                    print(f"[MARKET] Error processing {index_name}: {e}")
-                    continue
-            
-            if len(results) == 3:
-                print(f"[MARKET] vnstock3 success for all 3 indices")
-                return {
-                    "status": "success",
-                    "data": results
-                }
-        
-    except Exception as e:
-        print(f"[MARKET] vnstock3 failed: {e}")
-        import traceback
-        traceback.print_exc()
+    from services.market_service import mem_get, mem_set
     
-    # Fallback to database
+    # 0. Throttling: Cache kết quả toàn bộ cho 10 giây để tránh spam API
+    cached_summary = mem_get("market_summary_full_v3")
+    if cached_summary:
+        return {"status": "success", "data": cached_summary, "cached": True}
+
+    # 1. Kiểm tra Circuit Breaker (Backoff)
+    from core.redis_client import get_redis
+    r_client = get_redis()
+    backoff = False
+    try:
+        backoff = mem_get("vci_backoff") or (r_client.get("vci_rate_limit_backoff") if r_client else None)
+    except:
+        pass
+    
+    if backoff:
+        print("[MARKET] VCI Backoff active. Skipping API call.")
+    else:
+        # 2. Try vnstock3
+        try:
+            print(f"[MARKET] Trying vnstock3 Trading.price_board for {indices}")
+            df = Trading(source='VCI').price_board(indices)
+            
+            if df is not None and not df.empty:
+                print(f"[MARKET] vnstock3 returned data with shape: {df.shape}")
+                
+                for idx, index_name in enumerate(indices):
+                    try:
+                        # VCI might return symbols in different order or missing some?
+                        # Usually it matches as we passed the list, but let's be safe.
+                        # search for row where symbol matches
+                        symbol_found = False
+                        row = None
+                        for r_idx in range(len(df)):
+                            if df.iloc[r_idx][('listing', 'symbol')] == index_name:
+                                row = df.iloc[r_idx]
+                                symbol_found = True
+                                break
+                        
+                        if not symbol_found: continue
+
+                        # Get price data
+                        match_price = row[('match', 'match_price')]
+                        ref_price = row[('match', 'reference_price')]
+                        match_vol = row[('match', 'match_vol')]
+                        
+                        price = float(match_price or ref_price or 0)
+                        ref = float(ref_price or 0)
+                        
+                        # --- UNIFY TO POINTS (Standardize Index Units) ---
+                        if price > 10000:
+                            price /= 1000
+                            ref /= 1000
+
+                        if price > 0 and ref > 0:
+                            change = price - ref
+                            change_pct = (change / ref * 100)
+                            volume = float(match_vol or 0)
+                            
+                            # Try to get total value
+                            try:
+                                total_val = row.get(('match', 'total_value')) or row.get(('match', 'total_val')) or 0
+                                value = float(total_val) / 1e9
+                            except:
+                                value = 0
+                                
+                            # FALLBACK: If value is still 0, try the DB
+                            if value == 0:
+                                try:
+                                    latest_hist = db.query(models.HistoricalPrice).filter(
+                                        models.HistoricalPrice.ticker == index_name
+                                    ).order_by(models.HistoricalPrice.date.desc()).first()
+                                    if latest_hist and latest_hist.value > 0:
+                                        value = float(latest_hist.value) / (1e9 if latest_hist.value > 1e6 else 1)
+                                except:
+                                    pass
+                            
+                            # Check if market is closed
+                            now = datetime.now()
+                            is_weekend = now.weekday() >= 5
+                            is_closed = is_weekend or now.hour < 9 or now.hour >= 15
+                            
+                            # FETCH INTRADAY SPARKLINE
+                            from adapters.vci_adapter import get_intraday_sparkline
+                            sparkline = get_intraday_sparkline(index_name, mem_get, mem_set)
+
+                            results.append({
+                                "index": index_name,
+                                "date": datetime.now().strftime('%d/%m/%Y'),
+                                "price": round(price, 2),
+                                "change": round(change, 2),
+                                "change_pct": round(change_pct, 2),
+                                "volume": int(volume),
+                                "value": round(value, 2),
+                                "sparkline": sparkline
+                            })
+                    except Exception as e:
+                        print(f"[MARKET] Error processing {index_name}: {e}")
+                        continue
+                
+                if len(results) == len(indices):
+                    print(f"[MARKET] vnstock3 success for all indices")
+                    mem_set("market_summary_full_v3", results, 10)
+                    return {"status": "success", "data": results}
+            
+        except BaseException as e:
+            mem_set("vci_backoff", True, 60)
+            if r_client:
+                try: r_client.setex("vci_rate_limit_backoff", 60, "true")
+                except: pass
+            print(f"[MARKET] vnstock3 CRITICAL failure (Rate Limit?): {e}")
+    
+    # 3. Fallback to database if results incomplete
+    processed_count = 0
+    fallback_results = []
     try:
         print("[MARKET] Trying database fallback")
-        
         for index_name in indices:
-            latest = (
-                db.query(models.HistoricalPrice)
-                .filter(models.HistoricalPrice.ticker == index_name)
-                .order_by(models.HistoricalPrice.date.desc())
-                .first()
-            )
-            
+            # Check if we already have this in results (if some API calls succeeded)
+            existing = next((r for r in results if r["index"] == index_name), None)
+            if existing:
+                fallback_results.append(existing)
+                continue
+
+            latest = db.query(models.HistoricalPrice).filter(models.HistoricalPrice.ticker == index_name).order_by(models.HistoricalPrice.date.desc()).first()
             if latest:
-                prev = (
-                    db.query(models.HistoricalPrice)
-                    .filter(
-                        models.HistoricalPrice.ticker == index_name,
-                        models.HistoricalPrice.date < latest.date
-                    )
-                    .order_by(models.HistoricalPrice.date.desc())
-                    .first()
-                )
+                prev = db.query(models.HistoricalPrice).filter(models.HistoricalPrice.ticker == index_name, models.HistoricalPrice.date < latest.date).order_by(models.HistoricalPrice.date.desc()).first()
                 
                 price = float(latest.close_price)
                 ref = float(prev.close_price) if prev else price
+                
+                if price > 10000:
+                    price /= 1000
+                    ref /= 1000
+                    
                 change = price - ref
                 change_pct = (change / ref * 100) if ref > 0 else 0
                 
@@ -182,48 +249,31 @@ def get_market_summary(db: Session = Depends(get_db)):
                 is_weekend = now.weekday() >= 5
                 is_closed = is_weekend or now.hour < 9 or now.hour >= 15
                 
-                results.append({
+                from adapters.vci_adapter import get_intraday_sparkline
+                sparkline = get_intraday_sparkline(index_name, mem_get, mem_set)
+                
+                fallback_results.append({
                     "index": index_name,
                     "price": round(price, 2),
                     "change": round(change, 2),
                     "change_pct": round(change_pct, 2),
-                    "volume": 0,
-                    "value": 0,
+                    "volume": int(latest.volume or 0),
+                    "value": float(latest.value or 0) / (1e9 if (latest.value or 0) > 1e6 else 1),
                     "is_closed": is_closed,
-                    "last_updated": latest.date.strftime("%Y-%m-%d")
+                    "last_updated": latest.date.strftime("%Y-%m-%d"),
+                    "sparkline": sparkline
                 })
-            else:
-                # Add placeholder for indices without data
-                now = datetime.now()
-                is_weekend = now.weekday() >= 5
-                is_closed = is_weekend or now.hour < 9 or now.hour >= 15
-                
-                results.append({
-                    "index": index_name,
-                    "price": 0,
-                    "change": 0,
-                    "change_pct": 0,
-                    "volume": 0,
-                    "value": 0,
-                    "is_closed": is_closed,
-                    "last_updated": None
-                })
-        
-        if len(results) > 0:
-            print(f"[MARKET] Database fallback success for {len(results)} indices")
-            return {
-                "status": "success",
-                "data": results
-            }
+
+        if len(fallback_results) > 0:
+            mem_set("market_summary_full_v3", fallback_results, 10)
+            return {"status": "success", "data": fallback_results, "source": "database"}
             
     except Exception as e:
         print(f"[MARKET] Database fallback failed: {e}")
-        import traceback
-        traceback.print_exc()
     
-    print("[MARKET] All methods failed, returning error")
     return {
         "status": "error",
-        "data": None,
         "message": "Không thể lấy dữ liệu thị trường"
     }
+
+

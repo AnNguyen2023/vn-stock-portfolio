@@ -164,15 +164,12 @@ def growth_series(db: Session, period: str = "1m") -> Dict[str, Any]:
     days = period_map.get(period, 30)
     start_date = end_date - timedelta(days=days)
 
-    # 1. Lấy dữ liệu Holdings (Bỏ qua Cash để tính "Pure Stock Performance")
+    # 1. Lấy dữ liệu Holdings
     holdings = db.query(models.TickerHolding).filter(models.TickerHolding.total_volume > 0).all()
-
-    # List tickers
     tickers = [h.ticker for h in holdings]
-    # Thêm VNINDEX vào list cần lấy giá
     fetch_tickers = tickers + ["VNINDEX"]
 
-    # 2. Lấy lịch sử giá (HistoricalPrice)
+    # 2. Lấy lịch sử giá
     raw_prices = (
         db.query(models.HistoricalPrice)
         .filter(
@@ -183,10 +180,8 @@ def growth_series(db: Session, period: str = "1m") -> Dict[str, Any]:
         .all()
     )
 
-    # Tổ chức map: price_map[date][ticker] = price
     price_map: Dict[date, Dict[str, Decimal]] = {}
     all_dates = set()
-
     for p in raw_prices:
         if p.date not in price_map:
             price_map[p.date] = {}
@@ -194,62 +189,68 @@ def growth_series(db: Session, period: str = "1m") -> Dict[str, Any]:
         all_dates.add(p.date)
 
     sorted_dates = sorted(list(all_dates))
-
     if not sorted_dates:
          return {"portfolio": [], "message": "Chưa có dữ liệu giá lịch sử."}
 
-    # 3. Tính toán "Stock Value" giả lập (Simulated Backcast)
-    # Coi danh mục như "1 Cổ phiếu tổng hợp"
-    # Giá trị "Cổ phiếu tổng hợp" tại ngày t = Sum(Volume_i * Price_i_t)
-    # Loại bỏ tiền mặt (Cash) ra khỏi tính toán để không bị "dampening" biến động.
+    # 3. Tính toán "Base Price" cho từng mã và "Base NAV" cho Portfolio
+    # SMART BASE: Tìm ngày đầu tiên có dữ liệu (giá > 0) cho từng thứ
+    ticker_base_prices: Dict[str, Decimal] = {}
+    
+    # Portfolio Base calculation
+    portfolio_daily_values = []
+    first_valid_port_idx = -1
 
-    series: List[Dict[str, Any]] = []
-    
-    # Base values (ngày đầu tiên)
-    date_0 = sorted_dates[0]
-    prices_0 = price_map[date_0]
-    
-    stock_val_0 = Decimal("0")
-    for h in holdings:
-        p = prices_0.get(h.ticker, Decimal("0"))
-        stock_val_0 += _d(h.total_volume) * p
-    
-    # Để hiển thị VNIndex tương quan
-    vnindex_0 = prices_0.get("VNINDEX", Decimal("0"))
-
-    # Loop tính growth
-    for day in sorted_dates:
+    for i, day in enumerate(sorted_dates):
         day_prices = price_map[day]
         
-        # Calculate Daily Stock Value
-        stock_val_t = Decimal("0")
+        # A. Xử lý Base Price cho từng mã riêng lẻ
+        for t in fetch_tickers:
+            price = day_prices.get(t, Decimal("0"))
+            if t not in ticker_base_prices and price > 0:
+                ticker_base_prices[t] = price
+
+        # B. Xử lý Portfolio Value
+        val_t = Decimal("0")
         for h in holdings:
-            p = day_prices.get(h.ticker, Decimal("0")) # TODO: Forward fill if missing
-            stock_val_t += _d(h.total_volume) * p
-            
-        vnindex_t = day_prices.get("VNINDEX", Decimal("0"))
-
-        # Calculate Growth % (Pure Stock Performance)
-        # Portfolio Growth = (Val_t - Val_0) / Val_0
-        p_growth = Decimal("0")
-        if stock_val_0 > 0:
-            p_growth = (stock_val_t - stock_val_0) / stock_val_0 * 100
+            p = day_prices.get(h.ticker, Decimal("0"))
+            val_t += _d(h.total_volume) * p
+        portfolio_daily_values.append(val_t)
         
-        # VNIndex Growth
-        v_growth = Decimal("0")
-        if vnindex_0 > 0 and vnindex_t > 0:
-            v_growth = (vnindex_t - vnindex_0) / vnindex_0 * 100
+        if first_valid_port_idx == -1 and val_t > 0:
+            first_valid_port_idx = i
 
-        series.append({
-            "date": day.strftime("%Y-%m-%d"),
-            "PORTFOLIO": round(_safe_float(p_growth), 2),
-            "VNINDEX": round(_safe_float(v_growth), 2)
-        })
+    base_nav = portfolio_daily_values[first_valid_port_idx] if first_valid_port_idx != -1 else Decimal("0")
+
+    # 4. Loop tạo series data cho Recharts
+    series: List[Dict[str, Any]] = []
+    for i, day in enumerate(sorted_dates):
+        day_prices = price_map[day]
+        item = {"date": day.strftime("%Y-%m-%d")}
+        
+        # A. Portfolio Growth
+        p_growth = Decimal("0")
+        if base_nav > 0 and i >= first_valid_port_idx:
+            p_growth = (portfolio_daily_values[i] - base_nav) / base_nav * 100
+        item["PORTFOLIO"] = round(_safe_float(p_growth), 2)
+        
+        # B. Individual Tickers Growth (bao gồm VNINDEX)
+        for t in fetch_tickers:
+            t_growth = Decimal("0")
+            base_p = ticker_base_prices.get(t, Decimal("0"))
+            curr_p = day_prices.get(t, Decimal("0"))
+            
+            # Chỉ tính nếu đã qua ngày có Base Price của mã đó
+            if base_p > 0 and curr_p > 0:
+                t_growth = (curr_p - base_p) / base_p * 100
+            
+            item[t] = round(_safe_float(t_growth), 2)
+
+        series.append(item)
 
     return {
         "portfolio": series,
-        "base_date": date_0.strftime("%Y-%m-%d"),
-        "base_nav": _safe_float(stock_val_0),
+        "base_date": sorted_dates[0].strftime("%Y-%m-%d"),
+        "base_nav": _safe_float(base_nav),
         "data_points": len(series),
     }
 

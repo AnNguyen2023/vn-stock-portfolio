@@ -99,6 +99,8 @@ class HistoricalPrice(Base):
     ticker = Column(String(10), index=True)
     date = Column(Date, index=True)
     close_price = Column(Numeric(20, 4))
+    volume = Column(Numeric(20, 4), default=0)
+    value = Column(Numeric(20, 4), default=0) # Giá trị giao dịch (Thanh khoản)
 
     __table_args__ = (UniqueConstraint("ticker", "date", name="_ticker_date_uc"),)
 
