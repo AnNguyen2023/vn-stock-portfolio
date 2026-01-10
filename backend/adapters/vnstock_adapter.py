@@ -56,19 +56,34 @@ def get_financial_ratios(ticker: str, memory_cache_get_fn, memory_cache_set_fn) 
             mc_val = float(mc_bil)
             market_cap = mc_val if mc_val > 1e9 else mc_val * 1e9
         
+        # Validate Units (Percentage vs Decimal)
+        # Some sources return 15.5 (%), others return 0.155 (decimal)
         roe = latest.get(('Chỉ tiêu khả năng sinh lợi', 'ROE (%)')) or 0
         roa = latest.get(('Chỉ tiêu khả năng sinh lợi', 'ROA (%)')) or 0
         
+        roe = float(roe)
+        roa = float(roa)
+        
+        # Heuristic: If ROE < 1 (e.g. 0.15), it's likely decimal -> convert to %
+        # Unless it's a very low performance company, but <1% ROE is rare for top companies
+        if 0 < abs(roe) < 1: roe *= 100
+        if 0 < abs(roa) < 1: roa *= 100
+
         # Check if data is essentially empty/zero
         if all(float(v) == 0 for v in [pe, roe, roa, pb]):
+            # Try VCI Source before calculating fallback
+            print(f"[ADAPTER] Main source empty for {ticker}, trying VCI...")
+            vci_ratios = _fetch_ratios_vci(ticker)
+            if vci_ratios: return vci_ratios
+            
             return _calculate_fallback_ratios(ticker, stock)
 
         r_obj = {
             "pe": float(pe),
             "pb": float(pb),
             "market_cap": float(market_cap),
-            "roe": float(roe) * 100,
-            "roa": float(roa) * 100
+            "roe": roe,
+            "roa": roa
         }
         
         # Save to Caches
@@ -109,7 +124,18 @@ def _calculate_fallback_ratios(ticker: str, stock_obj) -> dict:
         # Identify Columns (Dynamic for different sectors)
         cols_equity = [c for c in df_bs.columns if 'VỐN CHỦ SỞ HỮU' in c.upper() or 'EQUITY' in c.upper()]
         cols_assets = [c for c in df_bs.columns if 'TỔNG CỘNG TÀI SẢN' in c.upper() or 'ASSETS' in c.upper()]
-        cols_profit = [c for c in df_is.columns if 'SAU THUẾ CỦA CỔ ĐÔNG' in c.upper() or 'NET INCOME' in c.upper()]
+        
+        # Profit keywords: 'SAU THUẾ CỦA CỔ ĐÔNG' (standard), 'LỢI NHUẬN SAU THUẾ' (MBS/Securities generic), 'NET INCOME'
+        cols_profit = [
+            c for c in df_is.columns 
+            if 'SAU THUẾ CỦA CỔ ĐÔNG' in c.upper() 
+            or 'NET INCOME' in c.upper()
+            or ('LỢI NHUẬN SAU THUẾ' in c.upper() and 'CỔ ĐÔNG' not in c.upper() and 'PHÂN BỔ' not in c.upper()) # Catch generic LNST
+        ]
+        
+        # If generic found, prefer the most specific one if available, but for MBS often it's just 'Lợi nhuận sau thuế...'
+        # Sort to prioritize standard names if multiple matches
+        cols_profit.sort(key=lambda x: 0 if 'CỔ ĐÔNG' in x.upper() else 1)
         
         equity = df_bs_latest[cols_equity[0]] if cols_equity else 0
         total_assets = df_bs_latest[cols_assets[0]] if cols_assets else 0
@@ -166,4 +192,39 @@ def get_all_symbols():
         return df
     except Exception as e:
         print(f"[ADAPTER] Vnstock listing error: {e}")
+        return None
+
+def _fetch_ratios_vci(ticker: str) -> dict | None:
+    """Try fetching ratios specifically from VCI source."""
+    try:
+        stock = Vnstock().stock(symbol=ticker, source='VCI')
+        df = stock.finance.ratio(period='yearly', lang='vi')
+        
+        if df is None or df.empty: return None
+        
+        latest = df.iloc[0]
+        # VCI Mapping might be same, need to be generic
+        # ratio() usually returns consistent structure regardless of source in vnstock wrapper
+        
+        pe = latest.get(('Chỉ tiêu định giá', 'P/E')) or 0
+        pb = latest.get(('Chỉ tiêu định giá', 'P/B')) or 0
+        roe = latest.get(('Chỉ tiêu khả năng sinh lợi', 'ROE (%)')) or 0
+        roa = latest.get(('Chỉ tiêu khả năng sinh lợi', 'ROA (%)')) or 0
+        
+        # VCI Market Cap might not be directly available in ratio or named differently
+        # We can re-use the market cap calc from crawler if needed, or check column
+        mc_bil = latest.get(('Chỉ tiêu định giá', 'Vốn hóa (Tỷ đồng)'))
+        market_cap = 0
+        if mc_bil:
+            val = float(mc_bil)
+            market_cap = val if val > 1e9 else val * 1e9
+            
+        return {
+            "pe": float(pe),
+            "pb": float(pb),
+            "market_cap": float(market_cap),
+            "roe": float(roe) * 100 if abs(float(roe)) < 1 else float(roe), # Apply logic
+            "roa": float(roa) * 100 if abs(float(roa)) < 1 else float(roa)
+        }
+    except:
         return None
