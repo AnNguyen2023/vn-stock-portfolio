@@ -22,16 +22,16 @@ Base = declarative_base()
 # Điều này giúp SQLAlchemy nhận diện đúng dialect và áp dụng các arg như prepare_threshold
 if "://" in DATABASE_URL:
     scheme, rest = DATABASE_URL.split("://", 1)
-    if scheme in ["postgres", "postgresql", "postgresql+psycopg2"]:
+    if scheme in ["postgres", "postgresql", "postgresql+psycopg"]:
         DATABASE_URL = f"postgresql+psycopg://{rest}"
 
 engine = create_engine(
     DATABASE_URL,
-    pool_pre_ping=False, # Supabase/PgBouncer Transaction mode thường không cần ping nếu dùng NullPool
-    poolclass=NullPool,  # Tắt pooling phía client để tránh lỗi connection closed
+    pool_pre_ping=False, 
+    poolclass=NullPool,
     connect_args={
         "prepare_threshold": 0,
-        "prepare_threshold": None # None hoặc 0 để tắt Server-side prepared statements
+        "prepare_threshold": None 
     },
 )
 SessionLocal = sessionmaker(autocommit=False, autoflush=False, bind=engine)

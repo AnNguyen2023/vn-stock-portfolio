@@ -9,7 +9,7 @@ REDIS_AVAILABLE = redis_client is not None
 def get_financial_ratios(ticker: str, memory_cache_get_fn, memory_cache_set_fn) -> dict:
     """
     Fetch financial ratios (PE, ROE, ROA, Market Cap) from vnstock.
-    Uses Redis and Memory caching (24h).
+    Uses Redis and Memory caching (7 days).
     """
     ticker = ticker.upper()
     cache_key = f"ratios:{ticker}"
@@ -26,8 +26,8 @@ def get_financial_ratios(ticker: str, memory_cache_get_fn, memory_cache_set_fn) 
             if cached_redis:
                 r_obj = json.loads(cached_redis)
                 if r_obj.get("market_cap", 0) < 1e17:
-                    # Backfill memory
-                    memory_cache_set_fn(cache_key, r_obj, 86400)
+                    # Backfill memory (7 days)
+                    memory_cache_set_fn(cache_key, r_obj, 604800)
                     return r_obj
                 else:
                     # Invalidate corrupted cache
@@ -86,10 +86,10 @@ def get_financial_ratios(ticker: str, memory_cache_get_fn, memory_cache_set_fn) 
             "roa": roa
         }
         
-        # Save to Caches
-        memory_cache_set_fn(cache_key, r_obj, 86400)
+        # Save to Caches (7 days = 604800s)
+        memory_cache_set_fn(cache_key, r_obj, 604800)
         if REDIS_AVAILABLE:
-            redis_client.setex(cache_key, 86400, json.dumps(r_obj))
+            redis_client.setex(cache_key, 604800, json.dumps(r_obj))
             
         return r_obj
 

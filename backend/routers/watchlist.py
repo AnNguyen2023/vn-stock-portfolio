@@ -1,103 +1,156 @@
 # routers/watchlist.py
-from fastapi import APIRouter, Depends, HTTPException, status
-from sqlalchemy.orm import Session
+from fastapi import APIRouter, Depends
+from sqlalchemy.orm import Session, joinedload
 from typing import List
 
 import models
 import schemas
 from core.db import get_db
+from core.exceptions import ValidationError, EntityNotFoundException
+from core.logger import logger
+from services.market_service import get_watchlist_detail_service, invalidate_watchlist_detail_cache
 
 router = APIRouter(prefix="/watchlists", tags=["Watchlist"])
 
-@router.get("/", response_model=List[schemas.WatchlistSchema])
+@router.get("/")
 def get_watchlists(db: Session = Depends(get_db)):
-    """Lấy danh sách các Watchlist của người dùng"""
-    return db.query(models.Watchlist).all()
+    """
+    Retrieves all user watchlists with tickers eager-loaded.
+    """
+    watchlists = db.query(models.Watchlist).options(joinedload(models.Watchlist.tickers)).all()
+    # Explicitly use WatchlistSchema for each item to ensure serialization
+    return {
+        "success": True, 
+        "data": [schemas.WatchlistSchema.model_validate(w) for w in watchlists]
+    }
 
-@router.post("/", response_model=schemas.WatchlistSchema)
+@router.post("/")
 def create_watchlist(req: schemas.WatchlistCreate, db: Session = Depends(get_db)):
-    """Tạo một Watchlist mới"""
+    """
+    Creates a new empty watchlist.
+    """
     exist = db.query(models.Watchlist).filter(models.Watchlist.name == req.name).first()
     if exist:
-        raise HTTPException(status_code=400, detail="Tên danh sách đã tồn tại")
+        raise ValidationError(f"Watchlist with name '{req.name}' already exists.")
     
     new_wl = models.Watchlist(name=req.name)
     db.add(new_wl)
     db.commit()
     db.refresh(new_wl)
-    return new_wl
+    logger.info(f"Watchlist created: {req.name} (ID: {new_wl.id})")
+    
+    return {"success": True, "data": new_wl}
 
-@router.put("/{id}", response_model=schemas.WatchlistSchema)
+@router.put("/{id}")
 def rename_watchlist(id: int, req: schemas.WatchlistUpdate, db: Session = Depends(get_db)):
-    """Đổi tên Watchlist"""
+    """
+    Renames an existing watchlist.
+    """
     wl = db.query(models.Watchlist).filter(models.Watchlist.id == id).first()
     if not wl:
-        raise HTTPException(status_code=404, detail="Không tìm thấy danh sách")
+        raise EntityNotFoundException("Watchlist", id)
     
-    # Kiểm tra xem tên mới đã tồn tại chưa (trừ chính nó)
     exist = db.query(models.Watchlist).filter(models.Watchlist.name == req.name, models.Watchlist.id != id).first()
     if exist:
-        raise HTTPException(status_code=400, detail="Tên danh sách đã tồn tại")
+        raise ValidationError(f"Watchlist with name '{req.name}' already exists.")
     
+    old_name = wl.name
     wl.name = req.name
     db.commit()
     db.refresh(wl)
-    return wl
+    logger.info(f"Watchlist renamed: {old_name} -> {req.name}")
+    
+    return {"success": True, "data": wl}
 
 @router.delete("/{id}")
 def delete_watchlist(id: int, db: Session = Depends(get_db)):
-    """Xóa một Watchlist"""
+    """
+    Deletes a watchlist and all its associated tickers.
+    """
     wl = db.query(models.Watchlist).filter(models.Watchlist.id == id).first()
     if not wl:
-        raise HTTPException(status_code=404, detail="Không tìm thấy danh sách")
+        raise EntityNotFoundException("Watchlist", id)
     
     db.delete(wl)
     db.commit()
-    return {"message": "Đã xóa danh sách"}
+    logger.info(f"Watchlist deleted: {id}")
+    
+    return {"success": True, "message": "Watchlist deleted successfully."}
 
-@router.post("/{id}/tickers", response_model=schemas.WatchlistTickerSchema)
+@router.post("/{id}/tickers")
 def add_ticker_to_watchlist(id: int, req: schemas.WatchlistTickerCreate, db: Session = Depends(get_db)):
-    """Thêm mã chứng khoán vào danh sách"""
+    """
+    Adds a security ticker to a specific watchlist.
+    """
     wl = db.query(models.Watchlist).filter(models.Watchlist.id == id).first()
     if not wl:
-        raise HTTPException(status_code=404, detail="Không tìm thấy danh sách")
+        raise EntityNotFoundException("Watchlist", id)
     
     ticker = req.ticker.strip().upper()
     
-    # 1. Kiểm tra xem mã đã có trong danh sách chưa
+    # 1. Check if already present
     exist = db.query(models.WatchlistTicker).filter_by(watchlist_id=id, ticker=ticker).first()
     if exist:
-        raise HTTPException(status_code=400, detail=f"Mã {ticker} đã có trong danh sách")
+        raise ValidationError(f"Ticker '{ticker}' is already in this watchlist.")
     
-    # 2. Kiểm tra xem mã có thực sự tồn tại trên thị trường không
+    # 2. Check security Existence
     security = db.query(models.Security).filter_by(symbol=ticker).first()
     if not security:
-        raise HTTPException(status_code=400, detail=f"Mã '{ticker}' không hợp lệ")
+        raise EntityNotFoundException("Security", ticker)
     
-    new_ticker = models.WatchlistTicker(watchlist_id=id, ticker=ticker)
-    db.add(new_ticker)
+    new_item = models.WatchlistTicker(watchlist_id=id, ticker=ticker)
+    db.add(new_item)
     db.commit()
-    db.refresh(new_ticker)
-    return new_ticker
+    db.refresh(new_item)
+    
+    # Invalidate Cache
+    invalidate_watchlist_detail_cache(id)
+    
+    logger.info(f"Added {ticker} to watchlist {id}")
+    
+    return {"success": True, "data": new_item}
 
 @router.delete("/{id}/tickers/{ticker_id}")
 def remove_ticker_from_watchlist(id: int, ticker_id: int, db: Session = Depends(get_db)):
-    """Xóa mã chứng khoán khỏi danh sách"""
+    """
+    Removes a ticker entry from a specific watchlist.
+    """
     item = db.query(models.WatchlistTicker).filter_by(id=ticker_id, watchlist_id=id).first()
     if not item:
-        raise HTTPException(status_code=404, detail="Không tìm thấy mã trong danh sách")
+        raise EntityNotFoundException("Watchlist Item", ticker_id)
     
+    ticker = item.ticker
     db.delete(item)
     db.commit()
-    return {"message": "Đã xóa mã khỏi danh sách"}
+    
+    # Invalidate Cache
+    invalidate_watchlist_detail_cache(id)
+    
+    logger.info(f"Removed {ticker} from watchlist {id}")
+    
+    return {"success": True, "message": f"Removed {ticker} from watchlist."}
 
 @router.get("/{id}/detail")
 def get_watchlist_detail(id: int, db: Session = Depends(get_db)):
-    """Lấy dữ liệu Pro cho toàn bộ mã trong Watchlist"""
+    """
+    Retrieves detailed real-time market data for all symbols in the watchlist.
+    Includes the specific WatchlistTicker ID for management purposes.
+    """
     wl = db.query(models.Watchlist).filter(models.Watchlist.id == id).first()
     if not wl:
-        raise HTTPException(status_code=404, detail="Không tìm thấy danh sách")
+        raise EntityNotFoundException("Watchlist", id)
     
-    tickers = [t.ticker for t in wl.tickers]
-    from services.market_service import get_watchlist_detail_service
-    return get_watchlist_detail_service(tickers)
+    # Create a mapping for ticker -> WatchlistTicker.id
+    ticker_to_id = {t.ticker: t.id for t in wl.tickers}
+    tickers = list(ticker_to_id.keys())
+    
+    # Pass ID for results caching (10s)
+    market_data = get_watchlist_detail_service(tickers, watchlist_id=id)
+    
+    # Inject the mapping ID into the market data objects
+    for item in market_data:
+        symbol = item.get('ticker')
+        if symbol in ticker_to_id:
+            item['watchlist_ticker_id'] = ticker_to_id[symbol]
+            
+    return {"success": True, "data": market_data}

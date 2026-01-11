@@ -8,7 +8,16 @@ export default function StockTrendingCell({ ticker }) {
     useEffect(() => {
         fetch(`http://localhost:8000/trending/${ticker}`)
             .then(res => res.json())
-            .then(data => setTrending(data))
+            .then(res => {
+                if (res.success && res.data) {
+                    setTrending(res.data);
+                } else if (!res.success && res.error) {
+                    setTrending({ trend: 'sideways', change_pct: 0 });
+                } else {
+                    // Fallback for old/direct format
+                    setTrending(res);
+                }
+            })
             .catch(() => setTrending({ trend: 'sideways', change_pct: 0 }));
     }, [ticker]);
 

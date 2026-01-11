@@ -10,7 +10,15 @@ export default function WatchlistRow({ item, onRemove, isSelected, onToggle }) {
         // Fetch trending data
         fetch(`http://localhost:8000/trending/${item.ticker}`)
             .then(res => res.json())
-            .then(data => setTrending(data))
+            .then(res => {
+                if (res.success && res.data) {
+                    setTrending(res.data);
+                } else if (!res.success && res.error) {
+                    setTrending({ trend: "sideways", change_pct: 0 });
+                } else {
+                    setTrending(res);
+                }
+            })
             .catch(() => setTrending({ trend: "sideways", change_pct: 0 }));
     }, [item.ticker]);
 
@@ -127,7 +135,7 @@ export default function WatchlistRow({ item, onRemove, isSelected, onToggle }) {
 
             <td className="p-4 text-center opacity-0 group-hover:opacity-100 transition-opacity">
                 <button
-                    onClick={() => onRemove(item.ticker)}
+                    onClick={() => onRemove(item.ticker, item.watchlist_ticker_id)}
                     className="p-2 text-rose-400 hover:text-rose-600 hover:bg-rose-50 rounded-xl transition-all"
                     title="Xóa khỏi danh sách"
                 >
