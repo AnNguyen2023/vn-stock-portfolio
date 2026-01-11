@@ -1,4 +1,4 @@
-import { getTrending, parseTrendingResponse } from '../lib/api';
+import { getTrending, parseTrendingResponse } from '../../lib/api';
 
 export default function StockTrendingCell({ ticker }) {
     const [trending, setTrending] = useState({ trend: 'sideways', change_pct: 0 });
