@@ -30,7 +30,6 @@ engine = create_engine(
     pool_pre_ping=False, 
     poolclass=NullPool,
     connect_args={
-        "prepare_threshold": 0,
         "prepare_threshold": None 
     },
 )
