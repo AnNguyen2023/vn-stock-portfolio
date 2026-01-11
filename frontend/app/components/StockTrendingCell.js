@@ -1,23 +1,11 @@
-// Helper component to fetch and display trending icon for each stock
-import { useState, useEffect } from 'react';
-import TrendingIcon from '../components/TrendingIcon';
+import { getTrending, parseTrendingResponse } from '../lib/api';
 
 export default function StockTrendingCell({ ticker }) {
     const [trending, setTrending] = useState({ trend: 'sideways', change_pct: 0 });
 
     useEffect(() => {
-        fetch(`http://localhost:8000/trending/${ticker}`)
-            .then(res => res.json())
-            .then(res => {
-                if (res.success && res.data) {
-                    setTrending(res.data);
-                } else if (!res.success && res.error) {
-                    setTrending({ trend: 'sideways', change_pct: 0 });
-                } else {
-                    // Fallback for old/direct format
-                    setTrending(res);
-                }
-            })
+        getTrending(ticker)
+            .then(res => setTrending(parseTrendingResponse(res)))
             .catch(() => setTrending({ trend: 'sideways', change_pct: 0 }));
     }, [ticker]);
 

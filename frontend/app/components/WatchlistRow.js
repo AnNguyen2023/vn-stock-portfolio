@@ -1,24 +1,13 @@
 "use client";
 import { TrendingUp, TrendingDown, Minus } from "lucide-react";
-import { useState, useEffect } from "react";
-import TrendingIcon from "./TrendingIcon";
+import { getTrending, parseTrendingResponse } from "../lib/api";
 
 export default function WatchlistRow({ item, onRemove, isSelected, onToggle }) {
     const [trending, setTrending] = useState({ trend: "sideways", change_pct: 0 });
 
     useEffect(() => {
-        // Fetch trending data
-        fetch(`http://localhost:8000/trending/${item.ticker}`)
-            .then(res => res.json())
-            .then(res => {
-                if (res.success && res.data) {
-                    setTrending(res.data);
-                } else if (!res.success && res.error) {
-                    setTrending({ trend: "sideways", change_pct: 0 });
-                } else {
-                    setTrending(res);
-                }
-            })
+        getTrending(item.ticker)
+            .then(res => setTrending(parseTrendingResponse(res)))
             .catch(() => setTrending({ trend: "sideways", change_pct: 0 }));
     }, [item.ticker]);
 

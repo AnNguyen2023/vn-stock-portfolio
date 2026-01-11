@@ -147,3 +147,24 @@ export const getTitanInspect = (symbol) => axios.get(`${API_URL}/titan/inspect/$
 
 // --- MARKET SUMMARY API ---
 export const getMarketSummary = () => axios.get(`${API_URL}/market-summary`);
+
+// Lấy chỉ báo xu hướng 5 phiên của mã chứng khoán
+export const getTrending = (ticker) => axios.get(`${API_URL}/trending/${ticker}`);
+
+/**
+ * Chuẩn hóa phản hồi trending từ API để các component dùng chung.
+ * Hỗ trợ cả format mới {success, data} và format cũ/trực tiếp.
+ */
+export function parseTrendingResponse(res, fallback = { trend: 'sideways', change_pct: 0 }) {
+    if (!res) return fallback;
+    // Nếu response đã qua interceptor bóc tách success/data
+    if (res.trend && typeof res.change_pct === 'number') {
+        return res;
+    }
+    // Nếu chưa qua interceptor (gọi fetch trực tiếp hoặc bị lỗi)
+    if (res.success && res.data) return res.data;
+    if (res.success === false) return fallback;
+
+    // Fallback cho format thô nếu có
+    return (res.trend) ? res : fallback;
+}
