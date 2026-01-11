@@ -22,7 +22,7 @@ Base = declarative_base()
 # Điều này giúp SQLAlchemy nhận diện đúng dialect và áp dụng các arg như prepare_threshold
 if "://" in DATABASE_URL:
     scheme, rest = DATABASE_URL.split("://", 1)
-    if scheme in ["postgres", "postgresql", "postgresql+psycopg"]:
+    if scheme in ["postgres", "postgresql", "postgresql+psycopg2"]:
         DATABASE_URL = f"postgresql+psycopg://{rest}"
 
 engine = create_engine(
