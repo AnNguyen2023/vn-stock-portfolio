@@ -162,8 +162,9 @@ def sync_portfolio_history_task(tickers: Iterable[str], sleep_sec: float = 2.0) 
         tickers (Iterable[str]): List of tickers to sync.
         sleep_sec (float): Seconds to sleep between tickers.
     """
-    logger.info(f"Background job started: Syncing portfolio history for {len(list(tickers))} tickers")
-    for t in tickers:
+    tickers_list = list(tickers)
+    logger.info(f"Background job started: Syncing portfolio history for {len(tickers_list)} tickers")
+    for t in tickers_list:
         t = (t or "").upper().strip()
         if not t:
             continue
