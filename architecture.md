@@ -49,26 +49,26 @@ graph TD
     %% Data Flows
     Browser <--> |"HTTPS/WSS"| Gateway
     Gateway --> |"Fetch Assets"| NextApp
-    Gateway --> |"Request API"| Uvicorn
+    Gateway --> |"API Requests"| Uvicorn
     Uvicorn --> FastAPI
     
-    FastAPI <--> |"Check Limit"| RateLimiter
-    FastAPI <--> |"SQL via Pooler"| Pooler
-    Pooler <--> PostgreSQL
-    FastAPI <--> |"Get/Set Cache"| RedisCache
+    FastAPI --> |"Rate Limit Check"| RateLimiter
+    FastAPI --> |"DB Access"| Pooler
+    Pooler --> PostgreSQL
+    FastAPI <--> |"Cache Read/Write"| RedisCache
     
-    FastAPI --> |"Enqueue Task"| WorkerQueue
-    WorkerQueue --> |"Consume"| Workers
+    FastAPI --> |"Job Dispatch"| WorkerQueue
+    WorkerQueue --> |"Task Consumption"| Workers
     
-    Workers <--> |"Fetch Live Prices"| MarketData
-    Workers --> |"Update DB"| Pooler
-    Workers --> |"Broadcast Price"| RedisPubSub
+    MarketData --> |"Price Ingestion"| Workers
+    Workers --> |"Persist State"| Pooler
+    Workers --> |"Publish Update"| RedisPubSub
     
-    RedisPubSub --> |"Sub"| WS_Server
-    WS_Server --> |"Live Push"| Browser
+    RedisPubSub --> |"Broadcast Sub"| WS_Server
+    WS_Server --> |"Real-time Push"| Browser
     
-    Browser --> |"Client Auth"| AuthService
-    FastAPI --> |"Validate JWT"| AuthService
+    Browser --> |"Auth Session"| AuthService
+    FastAPI --> |"Verify JWT"| AuthService
 
     %% Legend
     classDef sync fill:#f9f,stroke:#333,stroke-width:2px;
@@ -129,7 +129,7 @@ graph LR
     Deps --> Services
     Services --> Models
     Services --> Schemas
-    Models <--> Pooler
+    Models --> Pooler
 ```
 
 ### 2. Next.js Frontend Internals
@@ -175,7 +175,7 @@ graph LR
     TaskHandler --> Fetcher
     Fetcher --> Aggregator
     Aggregator --> Relay
-    Aggregator --> PostgreSQL
+    Aggregator --> Pooler
 ```
 
 ---
