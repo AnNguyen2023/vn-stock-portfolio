@@ -73,7 +73,11 @@ def get_trending(ticker: str):
     """
     Get 5-session price trending indicator for a ticker.
     """
-    return market_service.get_trending_indicator(ticker)
+    data = market_service.get_trending_indicator(ticker)
+    return {
+        "success": True,
+        "data": data
+    }
 
 @router.get("/market-summary")
 def get_market_summary(db: Session = Depends(get_db)):
