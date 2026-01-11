@@ -1,6 +1,8 @@
 "use client";
 import { TrendingUp, TrendingDown, Minus } from "lucide-react";
+import { useState, useEffect } from "react";
 import { getTrending, parseTrendingResponse } from "../../lib/api";
+import TrendingIcon from "./TrendingIcon";
 
 export default function WatchlistRow({ item, onRemove, isSelected, onToggle }) {
     const [trending, setTrending] = useState({ trend: "sideways", change_pct: 0 });

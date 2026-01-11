@@ -1,4 +1,6 @@
+import { useState, useEffect } from 'react';
 import { getTrending, parseTrendingResponse } from '../../lib/api';
+import TrendingIcon from './TrendingIcon';
 
 export default function StockTrendingCell({ ticker }) {
     const [trending, setTrending] = useState({ trend: 'sideways', change_pct: 0 });
