@@ -12,13 +12,9 @@ CACHE_DURATION = 30  # thời gian cache (giây)
 INDICES = ["VNINDEX", "VN30", "HNX30", "HNX", "UPCOM", "HNXINDEX", "UPCOMINDEX"]
 
 # --- CẤU HÌNH REDIS CACHE ---
-try:
-    redis_client = redis.Redis(host='localhost', port=6379, db=0, decode_responses=True)
-    redis_client.ping()
-    REDIS_AVAILABLE = True
-except:
-    REDIS_AVAILABLE = False
-    print("[CRAWLER] Redis không khả dụng, chạy không cache")
+from core.redis_client import get_redis
+redis_client = get_redis()
+REDIS_AVAILABLE = redis_client is not None
 
 from adapters.vps_adapter import get_realtime_prices_vps as get_prices_from_vps
 

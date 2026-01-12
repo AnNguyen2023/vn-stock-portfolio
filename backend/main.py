@@ -5,6 +5,9 @@ import os
 from dotenv import load_dotenv
 import pandas as pd
 
+# Load environment variables FIRST before any other imports
+load_dotenv(".env", override=True)
+
 # Pandas future configuration
 pd.set_option('future.no_silent_downcasting', True)
 
@@ -20,9 +23,6 @@ from core.exceptions import AppBaseException
 
 from routers import trading, portfolio, logs, market, watchlist, titan
 from tasks import cleanup_expired_data_task
-
-
-load_dotenv(".env", override=True)
 
 app = FastAPI(title="Invest Journal")
 

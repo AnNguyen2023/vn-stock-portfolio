@@ -65,12 +65,19 @@ def get_realtime_prices_vps(symbols: list[str]) -> dict:
                 vol_multiplier = 1 if is_index else 10
                 volume = float(item.get("lot", 0)) * vol_multiplier
                 
+                # Extract trading value (in billions)
+                # VPS might have fields like 'totalVal', 'totalValue', 'val', etc.
+                # Try common field names
+                value_raw = item.get("totalVal") or item.get("totalValue") or item.get("val") or 0
+                value = float(value_raw) / 1e9 if value_raw else 0
+                
                 results[sym] = {
                     "price": price,
                     "ref": ref,
                     "ceiling": ceiling,
                     "floor": floor,
-                    "volume": volume
+                    "volume": volume,
+                    "value": value
                 }
         else:
             logger.error(f"[VPS] Error fetching data: Status {response.status_code}")

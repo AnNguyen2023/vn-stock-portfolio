@@ -590,12 +590,34 @@ def _get_market_fallback(db: Session, indices: list[str]) -> list[dict]:
 def get_market_summary_service(db: Session) -> list[dict]:
     """
     Orchestrates market summary retrieval. 
-    Tries VCI API first with throttling, then falls back to database.
+    Smart caching: 10s during market hours (9h-15h), until next day after close.
     """
     indices = ["VNINDEX", "VN30", "HNX30"]
     cache_key = "market_summary_full_v3"
     
-    # 0. Throttling
+    # Determine cache TTL based on market hours
+    now = datetime.now()
+    current_hour = now.hour
+    current_minute = now.minute
+    
+    # Market hours: 9:00 - 15:00
+    is_market_hours = (9 <= current_hour < 15) or (current_hour == 15 and current_minute == 0)
+    
+    if is_market_hours:
+        # During trading: short cache (10 seconds)
+        cache_ttl = 10
+    else:
+        # After market close: cache until 9am next day
+        if current_hour >= 15:
+            # After 15h today, cache until 9am tomorrow
+            tomorrow_9am = now.replace(hour=9, minute=0, second=0, microsecond=0) + timedelta(days=1)
+        else:
+            # Before 9am today, cache until 9am today
+            tomorrow_9am = now.replace(hour=9, minute=0, second=0, microsecond=0)
+        
+        cache_ttl = int((tomorrow_9am - now).total_seconds())
+    
+    # 0. Check cache
     cached = mem_get(cache_key)
     if cached:
         return cached
@@ -619,7 +641,7 @@ def get_market_summary_service(db: Session) -> list[dict]:
                             results.append(processed)
                 
                 if len(results) == len(indices):
-                    mem_set(cache_key, results, 10)
+                    mem_set(cache_key, results, cache_ttl)
                     return results
         except Exception as e:
             logger.error(f"VCI price_board failed: {e}")
@@ -632,6 +654,17 @@ def get_market_summary_service(db: Session) -> list[dict]:
         today_obj = datetime.now()
         today_str = today_obj.strftime('%Y-%m-%d')
         yest_str = (today_obj - timedelta(days=7)).strftime('%Y-%m-%d')
+        
+        # Fetch realtime values from VPS (for trading value data)
+        vps_values = {}
+        try:
+            from adapters.vps_adapter import get_realtime_prices_vps
+            vps_data = get_realtime_prices_vps(indices)
+            for idx in indices:
+                if idx in vps_data:
+                    vps_values[idx] = vps_data[idx].get("value", 0)
+        except Exception as e:
+            logger.debug(f"Could not fetch VPS values: {e}")
         
         # Reuse vnstock object
         vn = Vnstock()
@@ -651,6 +684,9 @@ def get_market_summary_service(db: Session) -> list[dict]:
                     ref = float(prev['close'])
                     vol = float(latest.get('volume', 0))
                     
+                    # Get trading value from VPS realtime data
+                    value = vps_values.get(index_name, 0)
+                    
                     if price > 10000: # Unify points
                         price /= 1000
                         ref /= 1000
@@ -668,7 +704,7 @@ def get_market_summary_service(db: Session) -> list[dict]:
                         "change": round(change, 2),
                         "change_pct": round(change_pct, 2),
                         "volume": int(vol),
-                        "value": 0,
+                        "value": round(value, 2),
                         "sparkline": sparkline,
                         "source": "vci_history_live"
                     })
@@ -677,7 +713,7 @@ def get_market_summary_service(db: Session) -> list[dict]:
                 continue
         
         if len(results) > 0:
-            mem_set(cache_key, results, 30)
+            mem_set(cache_key, results, cache_ttl)
             return results
     except Exception as e:
         logger.error(f"Global History fallback failed: {e}")
@@ -686,10 +722,7 @@ def get_market_summary_service(db: Session) -> list[dict]:
     logger.info("Falling back to database for market summary (cached entries)")
     fallback = _get_market_fallback(db, indices)
     if fallback:
-        mem_set(cache_key, fallback, 10)
-        return fallback
-    if fallback:
-        mem_set(cache_key, fallback, 10)
+        mem_set(cache_key, fallback, cache_ttl)
         return fallback
     
     from core.exceptions import ExternalServiceError
