@@ -189,7 +189,7 @@ export default function StockTable({ data, buyForm, setBuyForm, setSellForm, set
                       <span className="text-[15px] font-medium text-slate-600">{allocation.toFixed(1)}%</span>
                     </td>
                     <td className="p-4 text-center border-r border-slate-200 last:border-r-0">
-                      <StockTrendingCell ticker={s.ticker} />
+                      <StockTrendingCell ticker={s.ticker} trending={s.trending} />
                     </td>
                     <td className="p-4 text-right border-r border-slate-200 last:border-r-0">
                       <div className={`inline-flex items-center gap-1 font-bold text-sm tabular-nums ${theme.badge} px-2.5 py-1 rounded-lg`}>

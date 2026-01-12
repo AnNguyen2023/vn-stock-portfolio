@@ -1,7 +1,7 @@
 # services/market_service.py
 from __future__ import annotations
 
-from datetime import datetime
+from datetime import datetime, date, timedelta
 from decimal import Decimal
 import time
 from typing import Iterable, Any, Optional, Union
@@ -87,6 +87,12 @@ def _process_single_ticker(t: str, p_info: dict, sec_info: dict | None = None) -
         # 4. FINANCIAL RATIOS (Dùng Adapter)
         ratios = vnstock_adapter.get_financial_ratios(t, mem_get, mem_set)
 
+        # 5. TRENDING INDICATOR (Batch Optimization)
+        # Use the existing function but without background_tasks to keep this service light
+        # Background tasks will be triggered by individual /trending calls OR we rely on pre-synced data
+        with SessionLocal() as db:
+            trending = get_trending_indicator(t, db)
+
         return {
             "ticker": t,
             "name": name,
@@ -103,6 +109,7 @@ def _process_single_ticker(t: str, p_info: dict, sec_info: dict | None = None) -
             "pb": ratios.get("pb", 0),
             "sparkline": sparkline,
             "industry": exchange,
+            "trending": trending
         }
 
     except Exception as e:
@@ -416,16 +423,11 @@ def get_watchlist_detail_service(tickers: list[str], watchlist_id: int | None = 
     return ordered_results
 
 
-def get_trending_indicator(ticker: str) -> dict:
+def get_trending_indicator(ticker: str, db: Session, background_tasks: Optional[BackgroundTasks] = None) -> dict:
     """
     Calculates the price trend indicator based on the last 5 trading sessions.
     Results are cached in Redis (if available) and Memory for 5 minutes.
-
-    Args:
-        ticker (str): Ticker symbol.
-
-    Returns:
-        dict: Trending data including 'trend' (string) and 'change_pct' (float).
+    Proactively triggers background sync if local data is insufficient.
     """
     ticker = ticker.upper()
     cache_key = f"trending:{ticker}"
@@ -444,40 +446,45 @@ def get_trending_indicator(ticker: str) -> dict:
         return cached_mem
     
     # 2. Calculate from DB
-    with SessionLocal() as db:
-        prices = (
-            db.query(models.HistoricalPrice)
-            .filter(models.HistoricalPrice.ticker == ticker)
-            .order_by(models.HistoricalPrice.date.desc())
-            .limit(5)
-            .all()
-        )
+    prices = (
+        db.query(models.HistoricalPrice)
+        .filter(models.HistoricalPrice.ticker == ticker)
+        .order_by(models.HistoricalPrice.date.desc())
+        .limit(5)
+        .all()
+    )
+    
+    if len(prices) < 5:
+        # Insufficient data, trigger sync if background_tasks provided
+        if background_tasks:
+            logger.info(f"Insufficient history for {ticker} (found {len(prices)}/5), triggering sync.")
+            background_tasks.add_task(sync_historical_task, ticker, '1m')
         
         if len(prices) < 2:
             return {"trend": "sideways", "change_pct": 0.0}
-        
-        prices = list(reversed(prices))
-        first_price = float(prices[0].close_price)
-        last_price = float(prices[-1].close_price)
-        change_pct = ((last_price - first_price) / first_price) * 100 if first_price > 0 else 0.0
-        
-        if change_pct >= 3.0: trend = "strong_up"
-        elif change_pct >= 1.0: trend = "up"
-        elif change_pct <= -3.0: trend = "strong_down"
-        elif change_pct <= -1.0: trend = "down"
-        else: trend = "sideways"
-        
-        result = {"trend": trend, "change_pct": round(change_pct, 2)}
-        
-        # 3. Save to Cache
-        if REDIS_AVAILABLE:
-            try:
-                redis_client.setex(cache_key, 300, json.dumps(result))
-            except Exception as e:
-                logger.debug(f"Redis cache write failed for {cache_key}: {e}")
-        
-        mem_set(cache_key, result, 300)
-        return result
+    
+    prices = list(reversed(prices))
+    first_price = float(prices[0].close_price)
+    last_price = float(prices[-1].close_price)
+    change_pct = ((last_price - first_price) / first_price) * 100 if first_price > 0 else 0.0
+    
+    if change_pct >= 3.0: trend = "strong_up"
+    elif change_pct >= 1.0: trend = "up"
+    elif change_pct <= -3.0: trend = "strong_down"
+    elif change_pct <= -1.0: trend = "down"
+    else: trend = "sideways"
+    
+    result = {"trend": trend, "change_pct": round(change_pct, 2)}
+    
+    # 3. Save to Cache
+    if REDIS_AVAILABLE:
+        try:
+            redis_client.setex(cache_key, 300, json.dumps(result))
+        except Exception as e:
+            logger.debug(f"Redis cache write failed for {cache_key}: {e}")
+    
+    mem_set(cache_key, result, 300)
+    return result
 
 def _process_market_row(row: Any, index_name: str, db: Session) -> Optional[dict]:
     """Helper to process a single index row from the VCI price board."""
@@ -535,17 +542,25 @@ def _get_market_fallback(db: Session, indices: list[str]) -> list[dict]:
     from adapters.vci_adapter import get_intraday_sparkline
     
     for index_name in indices:
-        latest = db.query(models.HistoricalPrice).filter(
-            models.HistoricalPrice.ticker == index_name
-        ).order_by(models.HistoricalPrice.date.desc()).first()
+        latest = db.query(models.TestHistoricalPrice).filter(
+            models.TestHistoricalPrice.ticker == index_name
+        ).order_by(models.TestHistoricalPrice.date.desc()).first()
+        
+        if not latest:
+            # Try real historical if test is empty
+            latest = db.query(models.HistoricalPrice).filter(
+                models.HistoricalPrice.ticker == index_name
+            ).order_by(models.HistoricalPrice.date.desc()).first()
         
         if not latest:
             continue
 
-        prev = db.query(models.HistoricalPrice).filter(
-            models.HistoricalPrice.ticker == index_name, 
-            models.HistoricalPrice.date < latest.date
-        ).order_by(models.HistoricalPrice.date.desc()).first()
+        # Get previous record for change calculation (from the same table)
+        table = models.TestHistoricalPrice if isinstance(latest, models.TestHistoricalPrice) else models.HistoricalPrice
+        prev = db.query(table).filter(
+            table.ticker == index_name, 
+            table.date < latest.date
+        ).order_by(table.date.desc()).first()
         
         price = float(latest.close_price)
         ref = float(prev.close_price) if prev else price
@@ -585,7 +600,7 @@ def get_market_summary_service(db: Session) -> list[dict]:
     if cached:
         return cached
 
-    # 1. API Call with Backoff logic
+    # 1. Try Live API (with Throttling)
     backoff = mem_get("vci_backoff")
     if not backoff:
         try:
@@ -593,13 +608,11 @@ def get_market_summary_service(db: Session) -> list[dict]:
             if df is not None and not df.empty:
                 results = []
                 for index_name in indices:
-                    # Find matching row in multi-index DF
                     row = None
                     for i in range(len(df)):
                         if df.iloc[i][('listing', 'symbol')] == index_name:
                             row = df.iloc[i]
                             break
-                    
                     if row is not None:
                         processed = _process_market_row(row, index_name, db)
                         if processed:
@@ -609,15 +622,214 @@ def get_market_summary_service(db: Session) -> list[dict]:
                     mem_set(cache_key, results, 10)
                     return results
         except Exception as e:
-            logger.error(f"VCI API Market Summary failed: {e}")
+            logger.error(f"VCI price_board failed: {e}")
             mem_set("vci_backoff", True, 60)
 
-    # 2. Database Fallback
-    logger.info("Falling back to database for market summary")
+    # 2. Robust 1D History Fallback (Works even when price_board fails or backoff is active)
+    try:
+        logger.info("Trying 1D history fallback for live index prices")
+        results = []
+        today_obj = datetime.now()
+        today_str = today_obj.strftime('%Y-%m-%d')
+        yest_str = (today_obj - timedelta(days=7)).strftime('%Y-%m-%d')
+        
+        # Reuse vnstock object
+        vn = Vnstock()
+        
+        for index_name in indices:
+            try:
+                stock = vn.stock(symbol=index_name, source='VCI')
+                df_hist = stock.quote.history(start=yest_str, end=today_str, interval='1D')
+                
+                if df_hist is not None and not df_hist.empty:
+                    logger.info(f"   [{index_name}] History fetch success: {len(df_hist)} rows")
+                    latest = df_hist.iloc[-1]
+                    prev = df_hist.iloc[-2] if len(df_hist) > 1 else latest
+                    # ... rest of logic
+                    
+                    price = float(latest['close'])
+                    ref = float(prev['close'])
+                    vol = float(latest.get('volume', 0))
+                    
+                    if price > 10000: # Unify points
+                        price /= 1000
+                        ref /= 1000
+                        
+                    change = price - ref
+                    change_pct = (change / ref * 100) if ref > 0 else 0
+                    
+                    from adapters.vci_adapter import get_intraday_sparkline
+                    sparkline = get_intraday_sparkline(index_name, mem_get, mem_set)
+                    
+                    results.append({
+                        "index": index_name,
+                        "date": latest['time'].strftime('%d/%m/%Y') if hasattr(latest['time'], 'strftime') else str(latest['time']),
+                        "price": round(price, 2),
+                        "change": round(change, 2),
+                        "change_pct": round(change_pct, 2),
+                        "volume": int(vol),
+                        "value": 0,
+                        "sparkline": sparkline,
+                        "source": "vci_history_live"
+                    })
+            except Exception as ex:
+                logger.debug(f"History fallback failed for {index_name}: {ex}")
+                continue
+        
+        if len(results) > 0:
+            mem_set(cache_key, results, 30)
+            return results
+    except Exception as e:
+        logger.error(f"Global History fallback failed: {e}")
+
+    # 3. Last Resort: Database Fallback (Old data)
+    logger.info("Falling back to database for market summary (cached entries)")
     fallback = _get_market_fallback(db, indices)
+    if fallback:
+        mem_set(cache_key, fallback, 10)
+        return fallback
     if fallback:
         mem_set(cache_key, fallback, 10)
         return fallback
     
     from core.exceptions import ExternalServiceError
     raise ExternalServiceError("Market", "Failed to retrieve market summary from all sources")
+
+
+# --- TEST DATA MECHANISM (7-DAY TESTING) ---
+
+def seed_test_data_task(ticker: str, days: int = 7) -> dict:
+    """
+    Seeds the TestHistoricalPrice table with data from HistoricalPrice 
+    for the last 'days' trading sessions.
+    """
+    ticker = ticker.upper().strip()
+    with SessionLocal() as db:
+        # Get last N days of real historical data
+        real_data = (
+            db.query(models.HistoricalPrice)
+            .filter(models.HistoricalPrice.ticker == ticker)
+            .order_by(models.HistoricalPrice.date.desc())
+            .limit(days)
+            .all()
+        )
+        
+        if not real_data:
+            logger.warning(f"No historical data found for {ticker} to seed test table.")
+            return {"success": False, "message": f"No data found for {ticker}"}
+
+        count = 0
+        for item in real_data:
+            try:
+                # Upsert into TestHistoricalPrice
+                exist = db.query(models.TestHistoricalPrice).filter_by(ticker=ticker, date=item.date).first()
+                if exist:
+                    exist.close_price = item.close_price
+                    exist.volume = item.volume
+                    exist.value = item.value
+                else:
+                    db.add(
+                        models.TestHistoricalPrice(
+                            ticker=ticker,
+                            date=item.date,
+                            close_price=item.close_price,
+                            volume=item.volume,
+                            value=item.value
+                        )
+                    )
+                count += 1
+            except Exception as e:
+                logger.error(f"Error seeding test item for {ticker}: {e}")
+                continue
+        
+        db.commit()
+        logger.info(f"Seeded {count} test records for {ticker}.")
+        return {"success": True, "count": count}
+
+def update_test_price(ticker: str, price: float, volume: float = 0, target_date: date = None) -> dict:
+    """
+    Manually update or insert a price entry in the test table for a specific date (default today).
+    """
+    ticker = ticker.upper().strip()
+    if target_date is None:
+        target_date = date.today()
+        
+    with SessionLocal() as db:
+        exist = db.query(models.TestHistoricalPrice).filter_by(ticker=ticker, date=target_date).first()
+        if exist:
+            exist.close_price = Decimal(str(price))
+            exist.volume = Decimal(str(volume))
+        else:
+            db.add(
+                models.TestHistoricalPrice(
+                    ticker=ticker,
+                    date=target_date,
+                    close_price=Decimal(str(price)),
+                    volume=Decimal(str(volume)),
+                    value=0
+                )
+            )
+        db.commit()
+        return {"success": True, "ticker": ticker, "date": str(target_date), "price": price}
+
+def get_test_market_summary_service(db: Session) -> list[dict]:
+    """
+    Retrieves market summary specifically from the test data table.
+    """
+    indices = ["VNINDEX", "VN30", "HNX30"]
+    results = []
+    
+    for index_name in indices:
+        # Get latest 2 days from test table to calc change
+        latest_two = (
+            db.query(models.TestHistoricalPrice)
+            .filter(models.TestHistoricalPrice.ticker == index_name)
+            .order_by(models.TestHistoricalPrice.date.desc())
+            .limit(2)
+            .all()
+        )
+        
+        if not latest_two:
+            continue
+            
+        latest = latest_two[0]
+        prev = latest_two[1] if len(latest_two) > 1 else latest
+        
+        price = float(latest.close_price)
+        ref = float(prev.close_price)
+        
+        # Point conversion for indices if needed (consistency with _process_market_row)
+        if price > 10000:
+            price /= 1000
+            ref /= 1000
+            
+        change = price - ref
+        change_pct = (change / ref * 100) if ref > 0 else 0
+        
+        results.append({
+            "index": index_name,
+            "date": latest.date.strftime("%Y-%m-%d"),
+            "price": round(price, 2),
+            "change": round(change, 2),
+            "change_pct": round(change_pct, 2),
+            "volume": int(latest.volume or 0),
+            "value": float(latest.value or 0) / 1e9,
+            "source": "test_table"
+        })
+    
+    return results
+def get_intraday_data_service(ticker: str) -> list[dict]:
+    """
+    Fetch and normalize intraday data for a specific ticker.
+    Supports VNINDEX, VN30, HNX30 and stocks.
+    """
+    from adapters.vci_adapter import get_intraday_sparkline
+    
+    # Use v4 cache key logic via get_intraday_sparkline adaptor
+    raw_sparkline = get_intraday_sparkline(ticker, mem_get, mem_set)
+    
+    # Raw sparkline format: [{"t": "09:00", "p": 1200, "v": 100}, ...]
+    # Lightweight-charts expects: { time: unixtime_or_string, value: number }
+    
+    # We maintain the format but ensure it's clean for the frontend
+    return raw_sparkline

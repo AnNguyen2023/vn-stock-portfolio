@@ -1,17 +1,10 @@
 "use client";
 import { TrendingUp, TrendingDown, Minus } from "lucide-react";
-import { useState, useEffect } from "react";
-import { getTrending, parseTrendingResponse } from "../../lib/api";
 import TrendingIcon from "./TrendingIcon";
 
 export default function WatchlistRow({ item, onRemove, isSelected, onToggle }) {
-    const [trending, setTrending] = useState({ trend: "sideways", change_pct: 0 });
-
-    useEffect(() => {
-        getTrending(item.ticker)
-            .then(res => setTrending(parseTrendingResponse(res)))
-            .catch(() => setTrending({ trend: "sideways", change_pct: 0 }));
-    }, [item.ticker]);
+    // Priority: use item.trending from batch API, fallback to sideways default
+    const trending = item.trending || { trend: "sideways", change_pct: 0 };
 
     const isPositive = item.change_pct > 0;
     const isNegative = item.change_pct < 0;

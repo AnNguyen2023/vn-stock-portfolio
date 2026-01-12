@@ -69,11 +69,11 @@ def get_historical(
     }
 
 @router.get("/trending/{ticker}")
-def get_trending(ticker: str):
+def get_trending(ticker: str, background_tasks: BackgroundTasks, db: Session = Depends(get_db)):
     """
     Get 5-session price trending indicator for a ticker.
     """
-    data = market_service.get_trending_indicator(ticker)
+    data = market_service.get_trending_indicator(ticker, db, background_tasks)
     return {
         "success": True,
         "data": data
@@ -109,3 +109,58 @@ def migrate_value_column(db: Session = Depends(get_db)):
     except Exception as e:
         logger.error(f"Migration error: {e}")
         return {"success": False, "message": str(e)}
+
+# --- TEST DATA ENDPOINTS ---
+
+@router.post("/test/seed")
+def seed_test_data(ticker: str, days: int = 7):
+    """
+    Seed test data for a specific ticker from existing history.
+    """
+    return market_service.seed_test_data_task(ticker, days)
+
+@router.post("/test/update")
+def update_test_data(ticker: str, price: float, volume: float = 0):
+    """
+    Manually update a price in the test table for today.
+    """
+    return market_service.update_test_price(ticker, price, volume)
+
+@router.get("/test/summary")
+def get_test_market_summary(db: Session = Depends(get_db)):
+    """
+    Get market summary using data from the test table.
+    """
+    data = market_service.get_test_market_summary_service(db)
+    return {
+        "success": True,
+        "data": data
+    }
+
+@router.get("/vps-live")
+def get_vps_live_board(symbols: str = "FPT,HAG,VCI,MBB,STB,FUEVFVND,MBS,BAF,DXG,SHB"):
+    """
+    Directly fetch and return VPS data for a list of symbols.
+    Minimal processing for maximum speed.
+    """
+    from adapters.vps_adapter import get_realtime_prices_vps
+    
+    ticker_list = [s.strip().upper() for s in symbols.split(",")]
+    raw_data = get_realtime_prices_vps(ticker_list)
+    
+    return {
+        "success": True,
+        "source": "vps_direct",
+        "data": raw_data
+    }
+@router.get("/intraday/{ticker}")
+def get_intraday(ticker: str):
+    """
+    Get intraday time-series data for a specific ticker.
+    """
+    data = market_service.get_intraday_data_service(ticker)
+    return {
+        "success": True,
+        "ticker": ticker.upper(),
+        "data": data
+    }

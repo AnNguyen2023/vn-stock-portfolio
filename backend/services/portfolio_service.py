@@ -121,6 +121,9 @@ def calculate_portfolio(db: Session) -> Dict[str, Any]:
 
         total_stock_value += curr_val
 
+        from services.market_service import get_trending_indicator
+        trending = get_trending_indicator(h.ticker, db)
+
         items.append(
             {
                 "ticker": h.ticker,
@@ -135,6 +138,7 @@ def calculate_portfolio(db: Session) -> Dict[str, Any]:
                 "profit_loss": float(profit_loss),
                 "profit_percent": float(profit_pct),
                 "current_value": float(curr_val),
+                "trending": trending,
             }
         )
 
