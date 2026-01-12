@@ -145,3 +145,16 @@ class TitanScanResult(Base):
     trend_strength = Column(String(20))
     optimal_length = Column(Integer)
     scanned_at = Column(DateTime, default=datetime.now, index=True)
+
+
+class TestHistoricalPrice(Base):
+    """Bảng dữ liệu test 1 tuần (tách riêng cho mục đích test app)"""
+    __tablename__ = "test_historical_prices"
+    id = Column(Integer, primary_key=True, index=True)
+    ticker = Column(String(10), index=True)
+    date = Column(Date, index=True)
+    close_price = Column(Numeric(20, 4))
+    volume = Column(Numeric(20, 4), default=0)
+    value = Column(Numeric(20, 4), default=0)
+
+    __table_args__ = (UniqueConstraint("ticker", "date", name="_test_ticker_date_uc"),)

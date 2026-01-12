@@ -37,7 +37,7 @@ def get_financial_ratios(ticker: str, memory_cache_get_fn, memory_cache_set_fn) 
 
     # 3. Fetch from Vnstock
     try:
-        stock = Vnstock().stock(symbol=ticker)
+        stock = Vnstock().stock(symbol=ticker, source='VCI')
         try:
             df_ratio = stock.finance.ratio(period='yearly', lang='vi')
         except BaseException as e:
@@ -187,7 +187,7 @@ def _calculate_fallback_ratios(ticker: str, stock_obj) -> dict:
 def get_all_symbols():
     """Fetch all symbols by exchange (HSX, HNX, UPCOM)."""
     try:
-        ls = Vnstock().stock(symbol="FPT").listing
+        ls = Vnstock().stock(symbol="FPT", source='VCI').listing
         df = ls.symbols_by_exchange()
         return df
     except Exception as e:

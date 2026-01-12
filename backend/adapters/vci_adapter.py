@@ -3,6 +3,7 @@ import json
 import time
 import pandas as pd
 from core.redis_client import get_redis
+from core.logger import logger
 from crawler import get_historical_prices
 
 redis_client = get_redis()
@@ -64,7 +65,7 @@ def get_intraday_sparkline(ticker: str, memory_cache_get_fn, memory_cache_set_fn
     Fetch intraday sparkline (1m interval) for the most recent session.
     """
     ticker = ticker.upper()
-    cache_key = f"intraday_spark_v3_{ticker}"
+    cache_key = f"intraday_spark_v4_{ticker}"
     
     # 1. Try Memory Cache
     sparkline = memory_cache_get_fn(cache_key)
@@ -77,7 +78,7 @@ def get_intraday_sparkline(ticker: str, memory_cache_get_fn, memory_cache_set_fn
             cached = redis_client.get(cache_key)
             if cached:
                 sparkline = json.loads(cached)
-                memory_cache_set_fn(cache_key, sparkline, 300) # 5m cache
+                memory_cache_set_fn(cache_key, sparkline, 60) # 1m cache
                 return sparkline
         except Exception:
             pass
@@ -96,30 +97,48 @@ def get_intraday_sparkline(ticker: str, memory_cache_get_fn, memory_cache_set_fn
         
         stock = Vnstock().stock(symbol=ticker, source='VCI')
         
-        # 1. First, find the LATEST trading day from daily history (very fast)
-        # This tells us exactly which day to fetch minute data for.
-        # Robust latest session finder
-        # We fetch last 10 days of daily history to know what's the latest data day
-        hist_1d = stock.quote.history(interval='1D')
-        if hist_1d is None or hist_1d.empty:
-            return []
-        
-        # Use 'time' column instead of index, as index might be RangeIndex
-        latest_date_item = hist_1d['time'].iloc[-1]
-        if isinstance(latest_date_item, str):
-            latest_date_str = latest_date_item.split(' ')[0]
-        else:
-            latest_date_str = latest_date_item.strftime('%Y-%m-%d')
-        
-        print(f"   [{ticker}] Latest trading session: {latest_date_str}")
-        
-        # 2. Fetch Intraday 1-minute data for THAT session
-        df = stock.quote.history(interval='1m', start=latest_date_str, end=latest_date_str)
+        # 1. Try today's 1m data first
+        today_str = datetime.now().strftime('%Y-%m-%d')
+        session_date_str = today_str
+        print(f"   [{ticker}] Checking today's session: {session_date_str}")
+        try:
+            df = stock.quote.history(interval='1m', start=session_date_str, end=session_date_str)
+        except Exception:
+            df = None
+
+        if df is None or df.empty:
+            # 2. Fallback: find the LATEST trading day from daily history
+            today_obj = datetime.now()
+            yest_str = (today_obj - timedelta(days=10)).strftime('%Y-%m-%d')
+            hist_1d = stock.quote.history(interval='1D', start=yest_str, end=today_str)
+            
+            if hist_1d is not None and not hist_1d.empty:
+                latest_date_item = hist_1d['time'].iloc[-1]
+                if isinstance(latest_date_item, str):
+                    session_date_str = latest_date_item.split(' ')[0]
+                else:
+                    session_date_str = latest_date_item.strftime('%Y-%m-%d')
+                
+                print(f"   [{ticker}] Falling back to latest history session: {session_date_str}")
+                df = stock.quote.history(interval='1m', start=session_date_str, end=session_date_str)
+            else:
+                return []
 
         if df is not None and not df.empty:
+            print(f"   [{ticker}] Successfully found {len(df)} rows.")
             # Ensure time is datetime and sorted
             df['time'] = pd.to_datetime(df['time'])
+            
+            # CRITICAL: Filter for the intended session date only
+            intended_date = datetime.strptime(session_date_str, '%Y-%m-%d').date()
+            df = df[df['time'].dt.date == intended_date]
+            
+            if df.empty:
+                print(f"   [{ticker}] NO ROWS found for SPECIFIC date: {intended_date}")
+                return []
+                
             df = df.sort_values('time')
+            print(f"   [{ticker}] Session Data range: {df['time'].min()} to {df['time'].max()}")
             df.set_index('time', inplace=True)
             
             # UNIFY TO POINTS (Standardize Index Units)
@@ -136,38 +155,73 @@ def get_intraday_sparkline(ticker: str, memory_cache_get_fn, memory_cache_set_fn
             end_session = datetime.combine(data_date, datetime.strptime("15:00", "%H:%M").time())
             
             # Create a full minute-by-minute index for the session
-            # This automatically creates the "lunch break" gap which we will ffill
             full_range = pd.date_range(start=start_session, end=end_session, freq='1min')
             
-            # Use 'last' to keep the latest price of each minute, then forward fill gaps
-            df_reindexed = df.reindex(full_range, method='ffill')
+            # Find the actual last time in the data
+            last_actual_time = df.index.max()
+            
+            # Reindex without filling first
+            df_reindexed = df.reindex(full_range)
+            
+            # Only fill gaps UP TO the last actual trade time
+            mask_up_to_last = df_reindexed.index <= last_actual_time
+            df_reindexed.loc[mask_up_to_last] = df_reindexed.loc[mask_up_to_last].ffill()
             
             # Bfill for the time between 9:00 and first trade
-            df_reindexed = df_reindexed.ffill().bfill()
+            df_reindexed = df_reindexed.bfill()
             
-            # Extract close prices
-            sparkline = [float(c) for c in df_reindexed['close'].tolist()]
+            # Use dictionary format: { "t": time_str, "p": price, "v": volume }
+            # Reset index to get 'time' as a column
+            df_reindexed = df_reindexed.reset_index().rename(columns={'index': 'time'})
             
-            # Downsample for UI (60-80 points is plenty for sparkline)
-            if len(sparkline) > 80:
-                step = len(sparkline) // 60
-                sparkline = sparkline[::step]
+            # Downsample: 1 point every 5 minutes for 6 hour session (360 mins)
+            # This gives ~72 points + end points, perfect for UI
+            df_downsampled = df_reindexed.iloc[::5] if len(df_reindexed) > 100 else df_reindexed
             
-            # Ensure the very last actual price is included for accuracy
-            sparkline.append(float(df['close'].iloc[-1]))
+            sparkline = []
+            for _, row in df_downsampled.iterrows():
+                p_val = row['close']
+                v_val = row.get('volume', 0)
+                
+                sparkline.append({
+                    "t": row['time'].strftime('%H:%M'),
+                    "timestamp": int(row['time'].timestamp()),
+                    "p": round(float(p_val), 2) if pd.notnull(p_val) else None,
+                    "v": int(v_val) if pd.notnull(v_val) else 0
+                })
+            
+            # Always ensure last point is accurate (if not null) and avoid duplicates
+            last_row = df_reindexed.iloc[-1]
+            last_ts = int(last_row['time'].timestamp())
+            
+            if not sparkline or sparkline[-1]['timestamp'] != last_ts:
+                last_p = last_row['close']
+                sparkline.append({
+                    "t": last_row['time'].strftime('%H:%M'),
+                    "timestamp": last_ts,
+                    "p": round(float(last_p), 2) if pd.notnull(last_p) else None,
+                    "v": int(last_row.get('volume', 0)) if pd.notnull(last_p) else 0
+                })
             
             # Update Caches
-            memory_cache_set_fn(cache_key, sparkline, 300)
+            memory_cache_set_fn(cache_key, sparkline, 60)
             if REDIS_AVAILABLE:
-                redis_client.setex(cache_key, 300, json.dumps(sparkline))
+                redis_client.setex(cache_key, 60, json.dumps(sparkline))
             
             return sparkline
             
     except BaseException as e:
-        # Rate limit hit (SystemExit) or other BaseException
-        memory_cache_set_fn("vci_backoff", True, 60)
-        if REDIS_AVAILABLE:
-            redis_client.setex("vci_rate_limit_backoff", 60, "true")
-        print(f"[ADAPTER] VCI Rate Limit hit or Critical Error for {ticker}: {e}")
+        # Rate limit hit (SystemExit) or other BaseException (e.g. RetryError raised TypeError)
+        logger.error(f"[ADAPTER] VCI Intraday Failed for {ticker}: {e}")
+        
+        # Rate limit recovery: only backoff if it's a SystemExit or explicitly mentioned
+        if "Retry" in str(e) or "SystemExit" in str(e):
+             memory_cache_set_fn("vci_backoff", True, 60)
+             if REDIS_AVAILABLE:
+                 redis_client.setex("vci_rate_limit_backoff", 60, "true")
+        
+        # CRITICAL FALLBACK: Use 7-day daily history if intraday fails
+        print(f"   [{ticker}] Falling back to Daily history sparkline...")
+        return get_sparkline_data(ticker, memory_cache_get_fn, memory_cache_set_fn)
     
     return []
