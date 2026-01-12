@@ -120,6 +120,20 @@ def get_ticker_lifetime_profit(ticker: str, db: Session = Depends(get_db)):
     data = get_ticker_profit(db, ticker)
     return {"success": True, "data": data}
 
+@router.post("/save-nav-snapshot")
+def save_nav_snapshot_manual(db: Session = Depends(get_db)):
+    """
+    Manually trigger NAV snapshot save.
+    Useful for testing or manual end-of-day saves.
+    """
+    try:
+        from tasks.daily_nav_snapshot import save_daily_nav_snapshot
+        save_daily_nav_snapshot()
+        return {"success": True, "message": "NAV snapshot saved successfully"}
+    except Exception as e:
+        logger.error(f"Manual NAV snapshot failed: {e}")
+        return {"success": False, "message": str(e)}
+
 @router.post("/reset-data")
 def reset_data(db: Session = Depends(get_db)):
     """

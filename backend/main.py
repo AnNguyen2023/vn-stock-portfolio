@@ -91,7 +91,22 @@ def on_startup():
         cleanup_expired_data_task()
     except Exception as e:
         logger.error(f"Maintenance cleanup failed: {e}")
+    
+    # Initialize background scheduler for daily tasks
+    try:
+        from core.scheduler import init_scheduler
+        init_scheduler()
+    except Exception as e:
+        logger.error(f"Scheduler initialization failed: {e}")
 
+
+@app.on_event("shutdown")
+def on_shutdown():
+    try:
+        from core.scheduler import shutdown_scheduler
+        shutdown_scheduler()
+    except Exception as e:
+        logger.error(f"Scheduler shutdown failed: {e}")
 
 # Routers
 app.include_router(portfolio.router)
