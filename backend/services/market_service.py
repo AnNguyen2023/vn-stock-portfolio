@@ -8,7 +8,7 @@ from typing import Iterable, Any, Optional, Union
 import json
 import concurrent.futures
 import pandas as pd
-from vnstock import Trading
+from vnstock import Trading, Vnstock
 from sqlalchemy.orm import Session
 
 import models

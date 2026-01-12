@@ -2,7 +2,7 @@ from vnstock import Vnstock
 import pandas as pd
 
 TICKER = 'MBS'
-stock = Vnstock().stock(symbol=TICKER)
+stock = Vnstock().stock(symbol=TICKER, source='VCI')
 
 print("Fetching BS & IS...")
 df_bs = stock.finance.balance_sheet(period='quarterly', lang='vi')

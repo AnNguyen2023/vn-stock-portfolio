@@ -1,6 +1,6 @@
 from vnstock import Vnstock
 
-stock = Vnstock().stock(symbol='MBB')
+stock = Vnstock().stock(symbol='MBB', source='VCI')
 df = stock.finance.ratio(period='yearly', lang='vi')
 
 if not df.empty:

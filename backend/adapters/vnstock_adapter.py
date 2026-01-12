@@ -97,7 +97,7 @@ def get_financial_ratios(ticker: str, memory_cache_get_fn, memory_cache_set_fn) 
         print(f"[ADAPTER] General error for {ticker}: {e}")
         # Last resort fallback
         try:
-            return _calculate_fallback_ratios(ticker, Vnstock().stock(symbol=ticker))
+            return _calculate_fallback_ratios(ticker, Vnstock().stock(symbol=ticker, source='VCI'))
         except:
             pass
         

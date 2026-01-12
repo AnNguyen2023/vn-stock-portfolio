@@ -2,7 +2,7 @@ from vnstock import Vnstock
 import pandas as pd
 
 TICKER = 'MBS'
-stock_obj = Vnstock().stock(symbol=TICKER)
+stock_obj = Vnstock().stock(symbol=TICKER, source='VCI')
 
 print(f"=== Testing Fallback Logic for {TICKER} ===\n")
 

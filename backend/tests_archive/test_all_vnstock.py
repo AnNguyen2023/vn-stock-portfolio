@@ -4,7 +4,7 @@ import pandas as pd
 TICKER = 'MBS'
 print(f"=== Testing ALL Data for {TICKER} ===")
 
-stock = Vnstock().stock(symbol=TICKER)
+stock = Vnstock().stock(symbol=TICKER, source='VCI')
 
 try:
     print("\n[Valuation Rating]:")
