@@ -12,29 +12,25 @@ import requests
 import os
 
 
+from services.portfolio_service import calculate_portfolio
+
+
 def save_daily_nav_snapshot():
     """
     Save today's NAV to database for chart display.
     Should be called after market close (after 15h).
     """
     try:
-        # Get current NAV from portfolio service
-        base_url = os.getenv("BASE_URL", "http://localhost:8000")
-        response = requests.get(f"{base_url}/portfolio", timeout=10)
-        
-        if response.status_code != 200:
-            logger.error(f"Failed to fetch portfolio data: {response.status_code}")
-            return
-        
-        data = response.json().get("data")
-        if not data:
-            logger.error("No portfolio data returned")
-            return
-        
-        current_nav = Decimal(str(data["total_nav"]))
-        today = date.today()
-        
         with SessionLocal() as db:
+            # Get current NAV directly from service
+            data = calculate_portfolio(db)
+            if not data:
+                logger.error("No portfolio data calculated")
+                return
+            
+            current_nav = Decimal(str(data["total_nav"]))
+            today = date.today()
+            
             # Check if today's snapshot already exists
             existing = db.query(models.DailySnapshot).filter(
                 models.DailySnapshot.date == today

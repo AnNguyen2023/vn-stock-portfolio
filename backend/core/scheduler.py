@@ -5,7 +5,7 @@ Background scheduler for periodic tasks
 from apscheduler.schedulers.background import BackgroundScheduler
 from apscheduler.triggers.cron import CronTrigger
 from core.logger import logger
-from tasks.daily_nav_snapshot import save_daily_nav_snapshot, should_run_daily_snapshot
+from core.data_engine import DataEngine
 
 
 scheduler = BackgroundScheduler()
@@ -14,26 +14,23 @@ scheduler = BackgroundScheduler()
 def init_scheduler():
     """
     Initialize and start the background scheduler.
-    Runs daily NAV snapshot at 15:05 every day (5 minutes after market close).
     """
     try:
-        # Schedule daily NAV snapshot at 15:05 every day
+        # 1. Start EOD process daily at 15:05
         scheduler.add_job(
-            func=save_daily_nav_snapshot,
+            func=DataEngine.end_of_day_sync,
             trigger=CronTrigger(hour=15, minute=5),
-            id='daily_nav_snapshot',
-            name='Save daily NAV snapshot after market close',
+            id='eod_sync',
+            name='Daily Data Sync and NAV Snapshot',
             replace_existing=True
         )
         
-        # Also check on startup if we need to save today's snapshot
-        # (in case server was down at 15:05)
-        if should_run_daily_snapshot():
-            logger.info("Running missed daily NAV snapshot on startup")
-            save_daily_nav_snapshot()
+        # 2. Startup Self-Healing
+        # (This is better called here as part of system readiness)
+        DataEngine.startup_sync()
         
         scheduler.start()
-        logger.info("✅ Background scheduler started successfully")
+        logger.info("✅ Background scheduler and DataEngine started")
         
     except Exception as e:
         logger.error(f"Failed to initialize scheduler: {e}")

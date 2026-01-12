@@ -158,3 +158,11 @@ class TestHistoricalPrice(Base):
     value = Column(Numeric(20, 4), default=0)
 
     __table_args__ = (UniqueConstraint("ticker", "date", name="_test_ticker_date_uc"),)
+
+
+class SystemSetting(Base):
+    """Bảng lưu các cấu hình và trạng thái hệ thống"""
+    __tablename__ = "system_settings"
+    key = Column(String(50), primary_key=True)
+    value = Column(String(255))
+    updated_at = Column(DateTime, default=datetime.now, onupdate=datetime.now)
