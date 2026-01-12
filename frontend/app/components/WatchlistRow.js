@@ -1,18 +1,10 @@
 "use client";
 import { TrendingUp, TrendingDown, Minus } from "lucide-react";
-import { useState, useEffect } from "react";
 import TrendingIcon from "./TrendingIcon";
 
 export default function WatchlistRow({ item, onRemove, isSelected, onToggle }) {
-    const [trending, setTrending] = useState({ trend: "sideways", change_pct: 0 });
-
-    useEffect(() => {
-        // Fetch trending data
-        fetch(`http://localhost:8000/trending/${item.ticker}`)
-            .then(res => res.json())
-            .then(data => setTrending(data))
-            .catch(() => setTrending({ trend: "sideways", change_pct: 0 }));
-    }, [item.ticker]);
+    // Priority: use item.trending from batch API, fallback to sideways default
+    const trending = item.trending || { trend: "sideways", change_pct: 0 };
 
     const isPositive = item.change_pct > 0;
     const isNegative = item.change_pct < 0;
@@ -127,7 +119,7 @@ export default function WatchlistRow({ item, onRemove, isSelected, onToggle }) {
 
             <td className="p-4 text-center opacity-0 group-hover:opacity-100 transition-opacity">
                 <button
-                    onClick={() => onRemove(item.ticker)}
+                    onClick={() => onRemove(item.ticker, item.watchlist_ticker_id)}
                     className="p-2 text-rose-400 hover:text-rose-600 hover:bg-rose-50 rounded-xl transition-all"
                     title="Xóa khỏi danh sách"
                 >

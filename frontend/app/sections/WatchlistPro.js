@@ -25,6 +25,7 @@ export default function WatchlistPro() {
     const [selectedTickers, setSelectedTickers] = useState([]);
     const [lastUpdated, setLastUpdated] = useState(new Date());
     const [sortConfig, setSortConfig] = useState({ key: 'change_pct', direction: 'desc' }); // Mặc định xếp theo % thay đổi giảm dần
+    const [draggedIdx, setDraggedIdx] = useState(null);
 
     // UI States for Modals
     const [showCreateModal, setShowCreateModal] = useState(false);
@@ -45,9 +46,25 @@ export default function WatchlistPro() {
     const fetchWatchlists = async () => {
         try {
             const res = await api.getWatchlists();
-            setWatchlists(res.data);
-            if (res.data.length > 0 && !activeWatchlistId) {
-                setActiveWatchlistId(res.data[0].id);
+            let data = res.data;
+
+            // Reorder based on localStorage
+            const savedOrder = localStorage.getItem("watchlist_order");
+            if (savedOrder) {
+                const orderIds = JSON.parse(savedOrder);
+                data = [...data].sort((a, b) => {
+                    const posA = orderIds.indexOf(a.id);
+                    const posB = orderIds.indexOf(b.id);
+                    if (posA === -1 && posB === -1) return 0;
+                    if (posA === -1) return 1;
+                    if (posB === -1) return -1;
+                    return posA - posB;
+                });
+            }
+
+            setWatchlists(data);
+            if (data.length > 0 && !activeWatchlistId) {
+                setActiveWatchlistId(data[0].id);
             }
         } catch (error) {
             console.error("Lỗi lấy danh sách watchlist:", error);
@@ -97,6 +114,35 @@ export default function WatchlistPro() {
         } catch (error) {
             toast.error(error.response?.data?.detail || "Lỗi tạo danh sách");
         }
+    };
+
+    // Drag and Drop Logic
+    const handleDragStart = (e, index) => {
+        setDraggedIdx(index);
+        e.dataTransfer.effectAllowed = "move";
+        // Ghost shadow
+        e.currentTarget.style.opacity = "0.5";
+    };
+
+    const handleDragOver = (e, index) => {
+        e.preventDefault();
+        if (draggedIdx === null || draggedIdx === index) return;
+
+        const newWatchlists = [...watchlists];
+        const draggedItem = newWatchlists[draggedIdx];
+        newWatchlists.splice(draggedIdx, 1);
+        newWatchlists.splice(index, 0, draggedItem);
+
+        setDraggedIdx(index);
+        setWatchlists(newWatchlists);
+    };
+
+    const handleDragEnd = (e) => {
+        setDraggedIdx(null);
+        e.currentTarget.style.opacity = "1";
+        // Save order to localStorage
+        const order = watchlists.map(w => w.id);
+        localStorage.setItem("watchlist_order", JSON.stringify(order));
     };
 
     const handleRenameWL = async (newName) => {
@@ -152,15 +198,25 @@ export default function WatchlistPro() {
         }
     };
 
-    const handleRemoveTicker = async (ticker) => {
-        const wl = watchlists.find(w => w.id === activeWatchlistId);
-        if (!wl) return;
-        const tickerObj = wl.tickers.find(t => t.ticker === ticker);
-        if (!tickerObj) return;
+    const handleRemoveTicker = async (ticker, tickerId) => {
+        // Ưu tiên dùng tickerId từ row (được inject từ fetchDetail)
+        let finalId = tickerId;
+
+        // Fallback tìm trong watchlists state nếu không có (trường hợp hiếm)
+        if (!finalId) {
+            const wl = watchlists.find(w => w.id === activeWatchlistId);
+            finalId = wl?.tickers?.find(t => t.ticker === ticker)?.id;
+        }
+
+        if (!finalId) {
+            toast.error("Không tìm thấy ID để xóa");
+            return;
+        }
 
         try {
-            await api.removeTickerFromWatchlist(activeWatchlistId, tickerObj.id);
+            await api.removeTickerFromWatchlist(activeWatchlistId, finalId);
             fetchDetail();
+            fetchWatchlists(); // Cập nhật cả list để đồng bộ ID mới nhất
             setSelectedTickers(prev => prev.filter(t => t !== ticker));
             toast.success(`Đã xóa ${ticker}`);
         } catch (error) {
@@ -177,21 +233,25 @@ export default function WatchlistPro() {
             confirmText: "Xóa tất cả",
             confirmColor: "bg-rose-500",
             onConfirm: async () => {
-                const wl = watchlists.find(w => w.id === activeWatchlistId);
-                if (!wl) return;
-
                 setLoading(true);
                 setConfirmModal(prev => ({ ...prev, show: false }));
                 try {
-                    for (const ticker of selectedTickers) {
-                        const tickerObj = wl.tickers.find(t => t.ticker === ticker);
-                        if (tickerObj) {
-                            await api.removeTickerFromWatchlist(activeWatchlistId, tickerObj.id);
-                        }
+                    // Tìm ID từ watchlistDetail vì nó luôn có watchlist_ticker_id mới nhất
+                    const idsToDelete = selectedTickers.map(t => {
+                        const detail = watchlistDetail.find(d => d.ticker === t);
+                        return detail?.watchlist_ticker_id;
+                    }).filter(id => id);
+
+                    if (idsToDelete.length === 0) {
+                        toast.error("Không tìm thấy mã hợp lệ để xóa");
+                        return;
                     }
+
+                    await Promise.all(idsToDelete.map(id => api.removeTickerFromWatchlist(activeWatchlistId, id)));
                     setSelectedTickers([]);
                     fetchDetail();
-                    toast.success(`Đã xóa ${selectedTickers.length} mã`);
+                    fetchWatchlists();
+                    toast.success(`Đã xóa thành công ${idsToDelete.length} mã`);
                 } catch (error) {
                     toast.error("Lỗi khi xóa hàng loạt");
                 } finally {
@@ -243,6 +303,12 @@ export default function WatchlistPro() {
                 let aValue = a[sortConfig.key];
                 let bValue = b[sortConfig.key];
 
+                // Special handling for nested trending object
+                if (sortConfig.key === 'trending') {
+                    aValue = a.trending?.change_pct ?? -Infinity;
+                    bValue = b.trending?.change_pct ?? -Infinity;
+                }
+
                 // Xử lý null/undefined
                 if (aValue === null || aValue === undefined) aValue = -Infinity;
                 if (bValue === null || bValue === undefined) bValue = -Infinity;
@@ -278,11 +344,20 @@ export default function WatchlistPro() {
                 {watchlists.map((wl, idx) => {
                     const color = WATCHLIST_COLORS[idx % WATCHLIST_COLORS.length];
                     const isActive = activeWatchlistId === wl.id;
+                    const isDragging = draggedIdx === idx;
+
                     return (
-                        <div key={wl.id} className="flex shrink-0">
+                        <div
+                            key={wl.id}
+                            className={`flex shrink-0 transition-all duration-200 ${isDragging ? "opacity-30 scale-95" : "opacity-100"}`}
+                            draggable
+                            onDragStart={(e) => handleDragStart(e, idx)}
+                            onDragOver={(e) => handleDragOver(e, idx)}
+                            onDragEnd={handleDragEnd}
+                        >
                             <button
                                 onClick={() => setActiveWatchlistId(wl.id)}
-                                className={`flex items-center gap-2 px-5 py-2.5 rounded-xl text-sm font-bold transition-all border-2 ${isActive
+                                className={`flex items-center gap-2 px-5 py-2.5 rounded-xl text-sm font-bold transition-all border-2 cursor-grab active:cursor-grabbing ${isActive
                                     ? `${color.active} text-white shadow-lg`
                                     : `bg-white text-slate-400 border-slate-100 ${color.hover}`
                                     }`}
@@ -359,8 +434,8 @@ export default function WatchlistPro() {
                                     <th className="p-4 text-right cursor-pointer hover:bg-emerald-100 transition-colors" onClick={() => requestSort('change_pct')}>
                                         % Thay đổi <SortIcon columnKey="change_pct" />
                                     </th>
-                                    <th className="p-4 text-center">
-                                        <div>Xu hướng</div>
+                                    <th className="p-4 text-center cursor-pointer hover:bg-emerald-100 transition-colors" onClick={() => requestSort('trending')}>
+                                        <div>Xu hướng <SortIcon columnKey="trending" /></div>
                                         <div className="text-[10px] text-slate-800 font-normal">(5 phiên)</div>
                                     </th>
                                     <th className="p-4 text-right cursor-pointer hover:bg-emerald-100 transition-colors" onClick={() => requestSort('pb')}>

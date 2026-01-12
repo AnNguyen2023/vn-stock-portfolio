@@ -1,7 +1,16 @@
-from pydantic import BaseModel, Field, field_validator
-from decimal import Decimal
 from datetime import datetime
-from typing import Optional
+from decimal import Decimal
+from typing import Optional, Generic, TypeVar, Any, List
+from pydantic import BaseModel, Field, field_validator
+
+T = TypeVar("T")
+
+class BaseResponse(BaseModel, Generic[T]):
+    """Standardized API response wrapper."""
+    success: bool = True
+    message: Optional[str] = None
+    data: Optional[T] = None
+    error: Optional[dict] = None
 
 class DepositRequest(BaseModel):
     amount: Decimal = Field(..., gt=0)

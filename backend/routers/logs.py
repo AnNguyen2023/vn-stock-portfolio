@@ -1,67 +1,89 @@
-"""
-routers/logs.py - API endpoints cho nhật ký giao dịch
-"""
-from fastapi import APIRouter, Depends, HTTPException
+# routers/logs.py
+from fastapi import APIRouter, Depends
 from sqlalchemy.orm import Session
 from sqlalchemy import cast, Date
 from datetime import datetime
 from core.db import get_db
+from core.exceptions import EntityNotFoundException, ValidationError
+from core.logger import logger
 import models
 import schemas
 
-# QUAN TRỌNG: Dùng APIRouter thay vì app
-router = APIRouter()
+router = APIRouter(tags=["Audit Logs"])
 
 @router.get("/logs")
 def get_audit_log(db: Session = Depends(get_db)):
     """
-    Trả về timeline nhật ký tổng hợp: Nạp/Rút/Mua/Bán
+    Returns a unified timeline of all financial events: Deposits, Withdrawals, Buy/Sell trades.
     """
-    # 1. Lấy lịch sử nạp/rút/lãi
+    # 1. Fetch historical record types
     cash = db.query(models.CashFlow).all()
-    
-    # 2. Lấy lịch sử mua/bán
     stocks = db.query(models.StockTransaction).all()
     
-    # 3. Gộp lại thành một danh sách nhật ký duy nhất
     logs = []
     
+    # 2. Normalize CashFlow entries
     for c in cash:
         logs.append({
-            "date": c.created_at.isoformat(),  # Convert datetime → string
+            "date": c.created_at.isoformat(),
             "type": c.type.value,
             "content": f"{c.description}: {int(c.amount):,} VND",
             "category": "CASH"
         })
     
+    # 3. Normalize StockTransaction entries
     for s in stocks:
         logs.append({
             "id": s.id,
             "date": s.transaction_date.isoformat(),
             "type": s.type.value,
-            "content": f"{s.type.value} {int(s.volume):,} {s.ticker} @ {int(s.price):,}đ",
+            "content": f"{s.type.value} {int(s.volume):,} {s.ticker} @ {int(s.price):,} VNĐ",
             "note": s.note,
             "category": "STOCK"
         })
     
-    # 4. Sắp xếp theo thời gian mới nhất lên đầu
+    # 4. Sort by chronological descending order
     logs.sort(key=lambda x: x['date'], reverse=True)
     
-    return logs
-
+    return {"success": True, "data": logs}
 
 @router.put("/logs/{tx_id}/note")
 def update_note(tx_id: int, req: schemas.NoteUpdate, db: Session = Depends(get_db)):
+    """
+    Updates the personal note/rationale for a specific stock transaction.
+    """
     transaction = db.query(models.StockTransaction).filter(models.StockTransaction.id == tx_id).first()
     if not transaction:
-        raise HTTPException(status_code=404, detail="Không tìm thấy giao dịch")
+        raise EntityNotFoundException("Transaction", tx_id)
+        
     transaction.note = req.note
     db.commit()
-    return {"message": "Đã cập nhật ghi chú thành công"}
+    logger.info(f"Updated note for transaction {tx_id}")
+    
+    return {"success": True, "message": "Transaction note updated successfully."}
 
 @router.get("/history-summary")
 def get_history_summary(start_date: str, end_date: str, db: Session = Depends(get_db)):
-    start = datetime.strptime(start_date, "%Y-%m-%d").date()
-    end = datetime.strptime(end_date, "%Y-%m-%d").date()
-    items = db.query(models.RealizedProfit).filter(cast(models.RealizedProfit.sell_date, Date) >= start, cast(models.RealizedProfit.sell_date, Date) <= end).all()
-    return {"total_profit": float(sum(i.net_profit for i in items)), "trade_count": len(items)}
+    """
+    Provides a high-level summary of realized profit/loss within a specific date range.
+    """
+    try:
+        start = datetime.strptime(start_date, "%Y-%m-%d").date()
+        end = datetime.strptime(end_date, "%Y-%m-%d").date()
+    except ValueError:
+        raise ValidationError("Invalid date format. Expected YYYY-MM-DD.")
+        
+    items = (
+        db.query(models.RealizedProfit)
+        .filter(
+            cast(models.RealizedProfit.sell_date, Date) >= start, 
+            cast(models.RealizedProfit.sell_date, Date) <= end
+        ).all()
+    )
+    
+    data = {
+        "total_profit": float(sum(i.net_profit for i in items)), 
+        "trade_count": len(items)
+    }
+    
+    return {"success": True, "data": data}

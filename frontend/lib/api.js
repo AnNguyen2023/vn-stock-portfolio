@@ -6,17 +6,31 @@ import { toast } from 'sonner';
 const API_URL = 'http://localhost:8000';
 
 // 2. Cấu hình Interceptor (Người gác cổng)
-// Tự động bắt lỗi kết nối toàn cục để triệt tiêu màn hình đỏ lỗi hệ thống
 axios.interceptors.response.use(
-    (response) => response,
+    (response) => {
+        // Tự động giải nén (unwrap) nếu Backend trả về format { success: true, data: ... }
+        if (response.data && typeof response.data === 'object' && response.data.success === true) {
+            if (Object.prototype.hasOwnProperty.call(response.data, 'data')) {
+                // Ghi đè response.data bằng field data bên trong để giữ tương thích với UI cũ
+                response.data = response.data.data;
+            }
+        }
+        return response;
+    },
     (error) => {
         // Trường hợp Backend chưa bật hoặc lỗi mạng
         if (!error.response) {
             toast.error('Lỗi kết nối hệ thống', {
                 description: 'Máy chủ Backend (Python) đang tắt hoặc lỗi mạng. Vui lòng kiểm tra Terminal.',
             });
+        } else {
+            // Chuẩn hóa lỗi từ format mới: { success: false, error: { message, detail } }
+            const apiError = error.response.data?.error;
+            if (apiError) {
+                // Gán ngược lại để các component dùng error.response.data.detail vẫn chạy được
+                error.response.data.detail = apiError.detail || apiError.message;
+            }
         }
-        // Các lỗi nghiệp vụ (400, 422, 500) sẽ được catch trực tiếp tại hàm handle trên giao diện
         return Promise.reject(error);
     }
 );
@@ -133,3 +147,31 @@ export const getTitanInspect = (symbol) => axios.get(`${API_URL}/titan/inspect/$
 
 // --- MARKET SUMMARY API ---
 export const getMarketSummary = () => axios.get(`${API_URL}/market-summary`);
+
+// Lấy chỉ báo xu hướng 5 phiên của mã chứng khoán
+export const getTrending = (ticker) => axios.get(`${API_URL}/trending/${ticker}`);
+
+// [NEW] Lấy dữ giá Live từ VPS (Direct)
+export const getVpsLive = (symbols = "") => axios.get(`${API_URL}/vps-live`, { params: { symbols } });
+
+/**
+ * Chuẩn hóa phản hồi trending từ API để các component dùng chung.
+ * Hỗ trợ cả format mới {success, data} và format cũ/trực tiếp.
+ */
+export function parseTrendingResponse(res, fallback = { trend: 'sideways', change_pct: 0 }) {
+    if (!res) return fallback;
+
+    // Support both full Axios response and the data object itself
+    const data = res.data || res;
+
+    // Check if the data has the required fields
+    if (data.trend && typeof data.change_pct === 'number') {
+        return data;
+    }
+
+    // Fallback for raw success/data wrap if interceptor didn't catch it
+    if (data.success && data.data) return data.data;
+    if (data.success === false) return fallback;
+
+    return (data.trend) ? data : fallback;
+}

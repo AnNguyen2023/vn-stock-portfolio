@@ -35,9 +35,15 @@ export default function StockTable({ data, buyForm, setBuyForm, setSellForm, set
         let aValue = a[sortConfig.key];
         let bValue = b[sortConfig.key];
 
+        // Special handling for nested trending object
+        if (sortConfig.key === 'trending') {
+          aValue = a.trending?.change_pct ?? -Infinity;
+          bValue = b.trending?.change_pct ?? -Infinity;
+        }
+
         // Handle undefined/null
-        if (aValue === undefined) aValue = -Infinity;
-        if (bValue === undefined) bValue = -Infinity;
+        if (aValue === undefined || aValue === null) aValue = -Infinity;
+        if (bValue === undefined || bValue === null) bValue = -Infinity;
 
         if (aValue < bValue) {
           return sortConfig.direction === 'asc' ? -1 : 1;
@@ -107,8 +113,8 @@ export default function StockTable({ data, buyForm, setBuyForm, setSellForm, set
                 <th className="p-4 text-right cursor-pointer hover:bg-emerald-100 transition-colors border-r border-slate-200 whitespace-nowrap" onClick={() => requestSort('current_value')}>Giá trị <SortIcon columnKey="current_value" /></th>
                 <th className="p-4 text-right cursor-pointer hover:bg-emerald-100 transition-colors border-r border-slate-200 whitespace-nowrap" onClick={() => requestSort('profit_loss')}>Lãi/Lỗ <SortIcon columnKey="profit_loss" /></th>
                 <th className="p-4 text-center w-32 cursor-pointer hover:bg-emerald-100 transition-colors border-r border-slate-200 whitespace-nowrap" onClick={() => requestSort('weight')}>Tỷ trọng <SortIcon columnKey="weight" /></th>
-                <th className="p-4 text-center border-r border-slate-200 whitespace-nowrap">
-                  <div>Xu hướng</div>
+                <th className="p-4 text-center border-r border-slate-200 whitespace-nowrap cursor-pointer hover:bg-emerald-100 transition-colors" onClick={() => requestSort('trending')}>
+                  <div>Xu hướng <SortIcon columnKey="trending" /></div>
                   <div className="text-[10px] text-slate-800 font-normal">(5 phiên)</div>
                 </th>
                 <th className="p-4 text-right cursor-pointer hover:bg-emerald-100 transition-colors border-r border-slate-200 whitespace-nowrap" onClick={() => requestSort('today_change_percent')}>Hôm nay <SortIcon columnKey="today_change_percent" /></th>
@@ -189,7 +195,7 @@ export default function StockTable({ data, buyForm, setBuyForm, setSellForm, set
                       <span className="text-[15px] font-medium text-slate-600">{allocation.toFixed(1)}%</span>
                     </td>
                     <td className="p-4 text-center border-r border-slate-200 last:border-r-0">
-                      <StockTrendingCell ticker={s.ticker} />
+                      <StockTrendingCell ticker={s.ticker} trending={s.trending} />
                     </td>
                     <td className="p-4 text-right border-r border-slate-200 last:border-r-0">
                       <div className={`inline-flex items-center gap-1 font-bold text-sm tabular-nums ${theme.badge} px-2.5 py-1 rounded-lg`}>

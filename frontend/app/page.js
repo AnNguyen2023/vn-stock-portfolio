@@ -49,9 +49,10 @@ const normalizeData = (responses, stockTickers, chartTickers, portfolioSeries = 
   if (portfolioSeries && portfolioSeries.length > 0) {
     baseData = portfolioSeries.map((p) => ({ date: p.date }));
   } else {
-    const validResponse = responses.find((r) => r?.data && r.data.length > 0);
+    // Nếu responses[index] đã là mảng (do interceptor giải nén), dùng trực tiếp
+    const validResponse = responses.find((r) => (Array.isArray(r) ? r.length > 0 : r?.data?.length > 0));
     if (!validResponse) return [];
-    baseData = validResponse.data;
+    baseData = Array.isArray(validResponse) ? validResponse : validResponse.data;
   }
 
   // Build price maps
@@ -59,7 +60,8 @@ const normalizeData = (responses, stockTickers, chartTickers, portfolioSeries = 
   const firstPrices = {};
 
   stockTickers.forEach((ticker, index) => {
-    const stockData = responses[index]?.data || [];
+    const rawRes = responses[index];
+    const stockData = Array.isArray(rawRes) ? rawRes : (rawRes?.data || []);
     if (stockData.length > 0) {
       priceMaps[ticker] = {};
       stockData.forEach((item) => {

@@ -1,0 +1,72 @@
+---
+config:
+  layout: fixed
+---
+flowchart TB
+ subgraph Client_Environment["Client Environment"]
+        Browser["Web Browser (React Client)"]
+  end
+ subgraph Frontend_Deployment["Frontend Deployment (Next.js)"]
+        NextApp["Next.js App"]
+        NextServer["Next.js Server (SSR/ISR)"]
+  end
+ subgraph Backend_Deployment["Backend Deployment (FastAPI)"]
+        Uvicorn["Uvicorn ASGI Server"]
+        FastAPI["FastAPI Application"]
+  end
+ subgraph API_Management["API Management & Routing"]
+        Gateway["Cloud Gateway / Reverse Proxy"]
+        RateLimiter["Redis (Rate Limiter)"]
+  end
+ subgraph Realtime_Infrastructure["Real-time Infrastructure"]
+        RedisPubSub["Redis (Pub/Sub)"]
+        WS_Server["WebSocket Handler (FastAPI)"]
+  end
+ subgraph Persistence_Layer["Managed Persistence Layer"]
+        Pooler["Supabase Connection Pooler (PgBouncer)"]
+        PostgreSQL["Supabase PostgreSQL"]
+        RedisCache["Redis (Application Cache)"]
+  end
+ subgraph Background_Processing["Async Background processing"]
+        WorkerQueue["Task Queue (Celery/RQ)"]
+        Workers["Python Workers"]
+  end
+ subgraph Third_Party["External Services"]
+        MarketData["Market Data APIs (VNStock)"]
+        AuthService["Supabase Auth (JWT)"]
+  end
+    Browser <-- HTTPS/WSS --> Gateway
+    Gateway -- Fetch Assets --> NextApp
+    Gateway -- Request API --> Uvicorn
+    Uvicorn --> FastAPI
+    FastAPI <-- Check Limit --> RateLimiter
+    FastAPI <-- SQL via Pooler --> Pooler
+    Pooler <--> PostgreSQL
+    FastAPI <-- Get/Set Cache --> RedisCache
+    FastAPI -- Enqueue Task --> WorkerQueue
+    WorkerQueue -- Consume --> Workers
+    Workers <-- Fetch Live Prices --> MarketData
+    Workers -- Update DB --> Pooler
+    Workers -- Broadcast Price --> RedisPubSub
+    RedisPubSub -- Sub --> WS_Server
+    WS_Server -- Live Push --> Browser
+    Browser -- Client Auth --> AuthService
+    FastAPI -- Validate JWT --> AuthService
+
+     NextApp:::sync
+     Uvicorn:::sync
+     FastAPI:::sync
+     Gateway:::sync
+     RateLimiter:::infra
+     RedisPubSub:::async
+     WS_Server:::async
+     Pooler:::sync
+     PostgreSQL:::sync
+     RedisCache:::infra
+     WorkerQueue:::async
+     Workers:::async
+     MarketData:::infra
+     AuthService:::infra
+    classDef sync fill:#f9f,stroke:#333,stroke-width:2px
+    classDef async fill:#9cf,stroke:#333,stroke-width:2px,stroke-dasharray: 5 5
+    classDef infra fill:#eee,stroke:#999,stroke-width:1px

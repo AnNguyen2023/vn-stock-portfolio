@@ -13,9 +13,16 @@ export default function MarketSummary() {
         try {
             setLoading(true);
             const response = await getMarketSummary();
-            if (response.data?.status === 'success') {
-                setData(response.data.data);
-                setLastUpdate(new Date());
+            // Hỗ trợ cả format cũ (status) và format mới (success)
+            const isSuccess = response.data?.success || response.data?.status === 'success';
+
+            if (isSuccess || Array.isArray(response.data)) {
+                // Nếu interceptor đã giải nén, response.data là mảng. Nếu chưa, lấy từ .data
+                const marketData = Array.isArray(response.data) ? response.data : response.data.data;
+                if (marketData) {
+                    setData(marketData);
+                    setLastUpdate(new Date());
+                }
             }
         } catch (error) {
             console.error('Error fetching market summary:', error);

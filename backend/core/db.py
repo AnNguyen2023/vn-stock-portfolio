@@ -27,11 +27,10 @@ if "://" in DATABASE_URL:
 
 engine = create_engine(
     DATABASE_URL,
-    pool_pre_ping=False, # Supabase/PgBouncer Transaction mode thường không cần ping nếu dùng NullPool
-    poolclass=NullPool,  # Tắt pooling phía client để tránh lỗi connection closed
+    pool_pre_ping=False, 
+    poolclass=NullPool,
     connect_args={
-        "prepare_threshold": 0,
-        "prepare_threshold": None # None hoặc 0 để tắt Server-side prepared statements
+        "prepare_threshold": None 
     },
 )
 SessionLocal = sessionmaker(autocommit=False, autoflush=False, bind=engine)
