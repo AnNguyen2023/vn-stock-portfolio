@@ -25,7 +25,7 @@ Hệ thống Backend quản lý nhật ký đầu tư chứng khoán cá nhân, 
 *   **Core:** Python 3.12, FastAPI
 *   **Database:** PostgreSQL (SQLAlchemy ORM)
 *   **Cache:** Redis
-*   **Data Source:** vnstock3 (nguồn VCI/TCBS)
+*   **Data Source:** vnstock3 (nguồn VCI/SSI)
 *   **Deployment:** Docker
 
 ## 📂 Cấu Trúc Dự Án

@@ -1,8 +1,9 @@
 "use client";
 import React, { useState, useEffect } from 'react';
-import { TrendingUp, TrendingDown, BarChart3, Activity, RefreshCw } from 'lucide-react';
-import { AreaChart, Area, ResponsiveContainer, YAxis, CartesianGrid, ReferenceLine } from 'recharts';
+import { TrendingUp, TrendingDown, Clock, Activity, ChevronDown, BarChart3, RefreshCw } from 'lucide-react';
+import LightweightChart from './LightweightChart';
 import { getMarketSummary } from '../../lib/api';
+import LiveTicker from './LiveTicker';
 
 export default function MarketSummary() {
     const [data, setData] = useState(null);
@@ -13,11 +14,9 @@ export default function MarketSummary() {
         try {
             setLoading(true);
             const response = await getMarketSummary();
-            // Hỗ trợ cả format cũ (status) và format mới (success)
             const isSuccess = response.data?.success || response.data?.status === 'success';
 
             if (isSuccess || Array.isArray(response.data)) {
-                // Nếu interceptor đã giải nén, response.data là mảng. Nếu chưa, lấy từ .data
                 const marketData = Array.isArray(response.data) ? response.data : response.data.data;
                 if (marketData) {
                     setData(marketData);
@@ -33,7 +32,6 @@ export default function MarketSummary() {
 
     useEffect(() => {
         fetchData();
-        // Auto refresh every 30 seconds
         const interval = setInterval(fetchData, 30000);
         return () => clearInterval(interval);
     }, []);
@@ -42,132 +40,72 @@ export default function MarketSummary() {
         if (!indexData) return null;
 
         const isPositive = indexData.change >= 0;
-
-        // --- DATA SANITIZATION (Frontend Hotfix) ---
-        // Indices are usually around 1000-2000. VND prices are 1,000,000+.
-        const scaleFactor = (indexData.price > 10000) ? 1000 : 1;
-
-        let displayPrice = indexData.price / scaleFactor;
-        let displayChange = indexData.change / scaleFactor;
-
-        // Reference price (previous close) must use the same scale
-        const refPrice = displayPrice - displayChange;
-        const hasData = displayPrice > 0;
-
-        // Sparkline normalizing: Force Point scale (e.g. 1860 instead of 1860000)
-        let sparkValues = (indexData.sparkline || []).map(v => (v > 10000 ? v / 1000 : v));
-
-        // --- Anchor: Chart always starts at 9:00 AM (Ref Price) ---
-        if (sparkValues.length > 0) {
-            // Prepend refPrice to represent the 9:00 AM status
-            sparkValues = [refPrice, ...sparkValues];
-        }
-
-        const chartData = sparkValues.map((val, i) => ({ i, value: val }));
-        const showChart = chartData.length > 1;
-
-        // Advanced coloring: Green above ref, Red below ref
-        const maxY = Math.max(...sparkValues, refPrice);
-        const minY = Math.min(...sparkValues, refPrice);
-        const range = maxY - minY;
-
-        // Offset for gradient (0 is top/maxY, 1 is bottom/minY)
-        const offset = range > 0 ? (maxY - refPrice) / range : 0.5;
-
         const colorGreen = '#10b981';
         const colorRed = '#f43f5e';
 
+        const displayPrice = indexData.price;
+        const displayChange = indexData.change;
+        const refPrice = displayPrice - displayChange;
+        const hasData = displayPrice > 0;
+        const showChart = indexData.sparkline && indexData.sparkline.length > 0;
+
         if (!hasData) {
             return (
-                <div className="flex-1 bg-white border border-slate-200 rounded-xl p-3 flex items-center justify-center shadow-sm">
-                    <p className="text-slate-400 text-sm">Chưa có dữ liệu</p>
+                <div className="flex-1 bg-white border border-slate-200 rounded-xl p-3 flex items-center justify-center shadow-sm min-h-[180px]">
+                    <p className="text-slate-400 text-sm italic">Chưa có dữ liệu</p>
                 </div>
             );
         }
 
         return (
-            <div className="flex-1 bg-slate-50 border border-slate-300 rounded-xl p-3 shadow-sm hover:shadow-md transition-shadow relative overflow-hidden">
+            <div className="flex-1 bg-slate-50 border border-slate-200 rounded-xl p-3 shadow-sm relative overflow-hidden flex flex-col group min-h-[220px] hover:shadow-md transition-shadow">
                 {/* Header Info */}
-                <div className="flex justify-between items-start mb-2 relative z-10">
-                    <div>
-                        <div className="flex items-center gap-1 mb-0.5">
-                            <h4 className="text-xs font-bold text-slate-500 uppercase tracking-wider">{indexData.index}</h4>
+                <div className="flex justify-between items-start mb-1 relative z-10 px-1 pt-1">
+                    <div className="flex flex-col">
+                        <div className="flex items-center gap-2 mb-1">
+                            <h4 className="text-[10px] font-black text-slate-400 uppercase tracking-[0.2em]">{indexData.index}</h4>
+                            <div className="flex items-center gap-1 bg-emerald-50 px-1.5 py-0.5 rounded text-[8px] font-bold text-emerald-600 animate-pulse border border-emerald-100">
+                                <Activity size={8} />
+                                LIVE
+                            </div>
                         </div>
                         <div className="flex items-baseline gap-2">
-                            <div className="flex items-center gap-1">
-                                {isPositive ? (
-                                    <TrendingUp size={20} className="text-emerald-700" />
-                                ) : (
-                                    <TrendingDown size={20} className="text-rose-600" />
-                                )}
-                                <span className={`text-2xl font-bold ${isPositive ? 'text-emerald-700' : 'text-rose-600'}`}>
-                                    {displayPrice?.toLocaleString('en-US', { minimumFractionDigits: 2, maximumFractionDigits: 2 })}
-                                </span>
-                            </div>
-                            <span className={`text-base font-bold ${isPositive ? 'text-emerald-700' : 'text-rose-600'}`}>
-                                {isPositive ? '+' : ''}{displayChange?.toLocaleString('en-US', { minimumFractionDigits: 2, maximumFractionDigits: 2 })} ({indexData.change_pct?.toLocaleString('en-US', { minimumFractionDigits: 2, maximumFractionDigits: 2 })}%)
+                            <span className={`text-[28px] font-black tabular-nums tracking-tight ${isPositive ? 'text-emerald-600' : 'text-rose-600'}`}>
+                                {displayPrice?.toLocaleString('en-US', { minimumFractionDigits: 2, maximumFractionDigits: 2 })}
                             </span>
                         </div>
+                    </div>
+                    <div className="flex flex-col items-end pt-1">
+                        <span className={`text-base font-bold tabular-nums flex items-center gap-1 ${isPositive ? 'text-emerald-600' : 'text-rose-600'}`}>
+                            {isPositive ? <TrendingUp size={16} strokeWidth={3} /> : <TrendingDown size={16} strokeWidth={3} />}
+                            {isPositive ? '+' : ''}{displayChange?.toLocaleString('en-US', { minimumFractionDigits: 2, maximumFractionDigits: 2 })}
+                        </span>
+                        <span className={`text-[13px] font-bold tabular-nums ${isPositive ? 'text-emerald-500' : 'text-rose-500'}`}>
+                            {indexData.change_pct?.toLocaleString('en-US', { minimumFractionDigits: 2, maximumFractionDigits: 2 })}%
+                        </span>
                     </div>
                 </div>
 
                 {/* Chart Area */}
-                <div className="h-16 -mx-3 mb-2 bg-white/40 border-y border-slate-200">
+                <div className="flex-1 -mx-3 my-2 min-h-[100px] relative bg-white/50 overflow-hidden">
                     {showChart ? (
-                        <ResponsiveContainer width="100%" height="100%">
-                            <AreaChart data={chartData} margin={{ top: 10, right: 0, left: 0, bottom: 0 }}>
-                                <defs>
-                                    <linearGradient id={`gradient-${indexData.index}`} x1="0" y1="0" x2="0" y2="1">
-                                        <stop offset="0" stopColor={colorGreen} stopOpacity={0.4} />
-                                        <stop offset={offset} stopColor={colorGreen} stopOpacity={0.4} />
-                                        <stop offset={offset} stopColor={colorRed} stopOpacity={0.4} />
-                                        <stop offset="1" stopColor={colorRed} stopOpacity={0.4} />
-                                    </linearGradient>
-                                    <linearGradient id={`stroke-${indexData.index}`} x1="0" y1="0" x2="0" y2="1">
-                                        <stop offset="0" stopColor={colorGreen} stopOpacity={1} />
-                                        <stop offset={offset} stopColor={colorGreen} stopOpacity={1} />
-                                        <stop offset={offset} stopColor={colorRed} stopOpacity={1} />
-                                        <stop offset="1" stopColor={colorRed} stopOpacity={1} />
-                                    </linearGradient>
-                                </defs>
-                                <CartesianGrid vertical={false} horizontal={true} stroke="#e2e8f0" strokeDasharray="1 3" />
-                                <YAxis domain={[minY - (range * 0.1), maxY + (range * 0.1)]} hide />
-                                <ReferenceLine
-                                    y={refPrice}
-                                    stroke="#64748b"
-                                    strokeDasharray="3 3"
-                                    strokeWidth={1}
-                                    label={{
-                                        position: 'top',
-                                        value: refPrice.toLocaleString('en-US', { maximumFractionDigits: 2 }),
-                                        fill: '#475569',
-                                        fontSize: 10,
-                                        fontWeight: 'bold',
-                                        offset: 5
-                                    }}
-                                />
-                                <Area
-                                    type="linear"
-                                    dataKey="value"
-                                    stroke={`url(#stroke-${indexData.index})`}
-                                    strokeWidth={3}
-                                    fillOpacity={1}
-                                    fill={`url(#gradient-${indexData.index})`}
-                                    baseValue={refPrice}
-                                    isAnimationActive={false}
-                                />
-                            </AreaChart>
-                        </ResponsiveContainer>
+                        <LightweightChart
+                            data={indexData.sparkline}
+                            refPrice={refPrice}
+                            isPositive={isPositive}
+                            ticker={indexData.index}
+                            height={100}
+                        />
                     ) : (
-                        <div className="h-full flex items-center justify-center text-slate-300 text-xs">No Chart</div>
+                        <div className="h-full flex items-center justify-center text-slate-300 text-[10px] font-black uppercase tracking-widest">No Chart Data</div>
                     )}
                 </div>
 
                 {/* Footer Info */}
-                <div className="flex items-center justify-between text-xs text-slate-700 relative z-10 border-t border-slate-200 pt-2">
+                <div className="flex items-center justify-between text-[10px] text-slate-500 relative z-10 border-t border-slate-100 pt-2 px-1">
                     <div className="flex flex-col">
-                        <span className="text-[10px] font-bold text-slate-400 uppercase tracking-tighter">Khối lượng</span>
-                        <span className="font-bold text-slate-700">
+                        <span className="text-[10px] font-black text-slate-500 uppercase tracking-widest leading-tight">Khối lượng</span>
+                        <span className="text-[12.5px] font-medium text-slate-900 tabular-nums">
                             {indexData.volume > 0
                                 ? `${(indexData.volume / 1e6).toLocaleString('en-US', { maximumFractionDigits: 1 })}M`
                                 : '--'}
@@ -175,10 +113,10 @@ export default function MarketSummary() {
                     </div>
 
                     <div className="flex flex-col items-end">
-                        <span className="text-[10px] font-bold text-slate-400 uppercase tracking-tighter">Thanh khoản</span>
-                        <span className="font-bold text-slate-700">
+                        <span className="text-[10px] font-black text-slate-500 uppercase tracking-widest leading-tight">Thanh khoản</span>
+                        <span className="text-[12.5px] font-medium text-slate-900 tabular-nums">
                             {indexData.value > 0
-                                ? `${indexData.value.toLocaleString('en-US', { maximumFractionDigits: 1 })} Tỷ`
+                                ? `${indexData.value.toLocaleString('en-US', { minimumFractionDigits: 1, maximumFractionDigits: 1 })} Tỷ`
                                 : '-- Tỷ'}
                         </span>
                     </div>
@@ -188,18 +126,23 @@ export default function MarketSummary() {
     };
 
     return (
-        <div className="bg-white rounded-2xl shadow-sm border border-slate-400 p-3">
+        <div className="bg-white rounded-2xl shadow-sm border border-slate-300 p-3 mb-6">
             {/* Header */}
-            <div className="flex items-center justify-between mb-2.5">
+            <div className="flex flex-col md:flex-row items-center justify-between mb-3 gap-3">
                 <div className="flex items-center gap-3">
                     <BarChart3 size={18} className="text-slate-600" />
-                    <h3 className="text-base font-medium text-slate-600 uppercase tracking-tight">Thông tin Thị trường</h3>
+                    <h3 className="text-base font-black text-slate-700 uppercase tracking-tighter">Thông tin Thị trường</h3>
                     {data && data.length > 0 && data[0].last_updated && (
-                        <span className="text-xs font-medium text-slate-500">
+                        <span className="text-xs font-bold text-slate-400">
                             {new Date(data[0].last_updated).toLocaleDateString('vi-VN')}
                         </span>
                     )}
                 </div>
+
+                <div className="flex-1 max-w-3xl px-2">
+                    <LiveTicker />
+                </div>
+
                 <button
                     onClick={fetchData}
                     disabled={loading}
@@ -211,11 +154,11 @@ export default function MarketSummary() {
             </div>
 
             {loading && !data ? (
-                <div className="flex items-center justify-center h-24">
+                <div className="flex items-center justify-center h-48 bg-slate-50 rounded-xl border border-dashed border-slate-200">
                     <Activity size={24} className="text-slate-300 animate-pulse" />
                 </div>
             ) : data && data.length > 0 ? (
-                <div className="flex gap-2.5">
+                <div className="flex flex-col lg:flex-row gap-3">
                     {data.map((indexData, idx) => (
                         <IndexCard key={idx} indexData={indexData} />
                     ))}

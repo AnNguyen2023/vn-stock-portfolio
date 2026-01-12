@@ -105,3 +105,7 @@ app.include_router(titan.router)
 @app.get("/")
 def root():
     return {"status": "ok", "app": "Invest Journal"}
+
+
+
+
