@@ -303,6 +303,12 @@ export default function WatchlistPro() {
                 let aValue = a[sortConfig.key];
                 let bValue = b[sortConfig.key];
 
+                // Special handling for nested trending object
+                if (sortConfig.key === 'trending') {
+                    aValue = a.trending?.change_pct ?? -Infinity;
+                    bValue = b.trending?.change_pct ?? -Infinity;
+                }
+
                 // Xử lý null/undefined
                 if (aValue === null || aValue === undefined) aValue = -Infinity;
                 if (bValue === null || bValue === undefined) bValue = -Infinity;
@@ -428,8 +434,8 @@ export default function WatchlistPro() {
                                     <th className="p-4 text-right cursor-pointer hover:bg-emerald-100 transition-colors" onClick={() => requestSort('change_pct')}>
                                         % Thay đổi <SortIcon columnKey="change_pct" />
                                     </th>
-                                    <th className="p-4 text-center">
-                                        <div>Xu hướng</div>
+                                    <th className="p-4 text-center cursor-pointer hover:bg-emerald-100 transition-colors" onClick={() => requestSort('trending')}>
+                                        <div>Xu hướng <SortIcon columnKey="trending" /></div>
                                         <div className="text-[10px] text-slate-800 font-normal">(5 phiên)</div>
                                     </th>
                                     <th className="p-4 text-right cursor-pointer hover:bg-emerald-100 transition-colors" onClick={() => requestSort('pb')}>
