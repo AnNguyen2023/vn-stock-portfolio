@@ -109,8 +109,8 @@ def cache_get(key: str):
         v = r.get(key)
         if v:
             data = json.loads(v)
-            # Store back in RAM for 10s to buffer frequent requests
-            _mem_set(key, data, 10)
+            # Store back in RAM for 60s to buffer frequent requests (Upstash command optimization)
+            _mem_set(key, data, 60)
             return data
         return None
     except Exception:

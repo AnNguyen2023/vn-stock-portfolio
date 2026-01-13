@@ -73,15 +73,14 @@ def _lazy_interest(asset: models.AssetSummary, db: Session) -> None:
         db.commit()
 
 
+from core.cache import cache
+
+@cache(ttl=60, key=CACHE_KEY)
 def calculate_portfolio(db: Session) -> Dict[str, Any]:
     """
     Calculates detailed portfolio metrics including real-time valuation, 
     profit/loss, and NAV. Results are cached for 60 seconds.
     """
-    cached = cache_get(CACHE_KEY)
-    if cached:
-        return cached
-
     asset = db.query(models.AssetSummary).first()
     if not asset:
         return {"cash_balance": 0, "total_stock_value": 0, "total_nav": 0, "holdings": []}
@@ -149,7 +148,6 @@ def calculate_portfolio(db: Session) -> Dict[str, Any]:
         "holdings": items,
     }
 
-    cache_set(CACHE_KEY, result, ex=60)
     return result
 
 
