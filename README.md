@@ -28,3 +28,7 @@ vn-stock-portfolio/
 │   ├── app/            # Giao diện chính (Page & Layout)
 │   └── lib/            # Cấu hình API (Axios)
 └── README.md
+
+---
+🚀 **[Demo Documentation Kit](file:///e:/vn-stock-portfolio/docs/README_DEMO.md)** - Chuẩn bị cho buổi demo sản phẩm.
+```
