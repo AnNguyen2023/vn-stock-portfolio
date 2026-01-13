@@ -96,8 +96,8 @@ def get_realtime_prices_vps(symbols: list[str]) -> dict:
                         # Third part is liquidity (Value). 
                         # Based on observation, VPS Index API 'ot' value part is usually in MILLIONS of VND.
                         # We want it in BILLIONS of VND. So divide by 1000.
-                        raw_val = _safe_float(ot_parts[2])
-                        value = raw_val / 1000
+                        val_raw = _safe_float(ot_parts[2])
+                        value = val_raw / 1000
                     else:
                         # Fallback to 'value' field if present
                         val_raw = item.get("value") or 0
