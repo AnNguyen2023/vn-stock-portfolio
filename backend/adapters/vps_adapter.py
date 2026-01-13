@@ -4,6 +4,19 @@ import logging
 # Configure basic logging
 logger = logging.getLogger(__name__)
 
+def _safe_float(val: Any, default: float = 0.0) -> float:
+    """Safely converts value to float, handling strings with commas and empty values."""
+    if val is None:
+        return default
+    try:
+        # Convert to string and strip commas (common in VPS API)
+        s_val = str(val).replace(",", "").strip()
+        if not s_val:
+            return default
+        return float(s_val)
+    except (ValueError, TypeError):
+        return default
+
 def get_realtime_prices_vps(symbols: list[str]) -> dict:
     """
     Fetches realtime price data from VPS API.
@@ -41,12 +54,12 @@ def get_realtime_prices_vps(symbols: list[str]) -> dict:
                     sym = item.get("sym", "").upper()
                     if not sym: continue
                     
-                    price = float(item.get("lastPrice", 0)) * 1000
-                    ref = float(item.get("r", 0)) * 1000
-                    volume = float(item.get("lot", 0)) * 10 
+                    price = _safe_float(item.get("lastPrice")) * 1000
+                    ref = _safe_float(item.get("r")) * 1000
+                    volume = _safe_float(item.get("lot")) * 10 
                     
                     val_raw = item.get("totalVal") or item.get("totalValue") or item.get("val") or 0
-                    value = float(str(val_raw).replace(",", "")) / 1e9 if val_raw else 0
+                    value = _safe_float(val_raw) / 1e9 if val_raw else 0
                     
                     results[sym] = {
                         "price": price, "ref": ref, 
@@ -73,7 +86,7 @@ def get_realtime_prices_vps(symbols: list[str]) -> dict:
                     sym = code_to_sym.get(code)
                     if not sym: continue
                     
-                    price = float(item.get("cIndex", 0))
+                    price = _safe_float(item.get("cIndex"))
                     # ot field: change|change%|value|up|down|ref
                     ot = item.get("ot", "")
                     ot_parts = ot.split("|") if ot else []
@@ -83,19 +96,22 @@ def get_realtime_prices_vps(symbols: list[str]) -> dict:
                         # Third part is liquidity (Value). 
                         # Based on observation, VPS Index API 'ot' value part is usually in MILLIONS of VND.
                         # We want it in BILLIONS of VND. So divide by 1000.
-                        raw_val = float(ot_parts[2].replace(",", ""))
+                        raw_val = _safe_float(ot_parts[2])
                         value = raw_val / 1000
                     else:
                         # Fallback to 'value' field if present
                         val_raw = item.get("value") or 0
-                        value = float(str(val_raw).replace(",", "")) / 1000
+                        value = _safe_float(val_raw) / 1000
+                        
+                    # Safe float conversion for change value (ot_parts[0])
+                    change_val = _safe_float(ot_parts[0]) if len(ot_parts) > 0 else 0
                         
                     results[sym] = {
                         "price": price, 
-                        "ref": price - (float(ot_parts[0]) if len(ot_parts) > 0 else 0),
+                        "ref": price - change_val,
                         "ceiling": 0,
                         "floor": 0,
-                        "volume": float(item.get("vol", 0)), 
+                        "volume": _safe_float(item.get("vol")), 
                         "value": value
                     }
         except Exception as e:
