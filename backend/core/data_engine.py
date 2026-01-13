@@ -42,8 +42,8 @@ class DataEngine:
             if last_sync_str:
                 last_sync = datetime.strptime(last_sync_str, "%Y-%m-%d").date()
             else:
-                # Default to 7 days ago if first time
-                last_sync = today - timedelta(days=7)
+                # Default to 100 days ago to ensure the requested 90-day history is always available
+                last_sync = today - timedelta(days=100)
                 
             if last_sync < today:
                 logger.info(f"--- [DataEngine] Missing sync since {last_sync}. Starting self-healing...")
@@ -57,8 +57,8 @@ class DataEngine:
         Generic function to fetch historical data for all relevant tickers.
         """
         with SessionLocal() as db:
-            # 1. Get all tickers in portfolio
-            holdings = db.query(models.TickerHolding.ticker).all()
+            # 1. Get all tickers in portfolio with ACTIVE holdings (total_volume > 0)
+            holdings = db.query(models.TickerHolding.ticker).filter(models.TickerHolding.total_volume > 0).all()
             tickers = [h[0] for h in holdings]
             
             # 2. Add indices (Limit to 3 core indices)
