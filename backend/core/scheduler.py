@@ -24,6 +24,16 @@ def init_scheduler():
             name='Daily Data Sync and NAV Snapshot',
             replace_existing=True
         )
+
+        # 2. Intraday Heartbeat Sync (Every 5 minutes from 9:00 to 15:00, Mon-Fri)
+        scheduler.add_job(
+            func=DataEngine.sync_historical_data,
+            args=[date.today(), date.today()],
+            trigger=CronTrigger(minute='*/5', hour='9-14', day_of_week='mon-fri'),
+            id='heartbeat_sync',
+            name='5-Minute Heartbeat Market Sync',
+            replace_existing=True
+        )
         
         # 2. Startup Self-Healing
         # (This is better called here as part of system readiness)

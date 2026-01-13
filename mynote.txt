@@ -204,3 +204,10 @@ backend/
 └── crawler.py          (Giữ nguyên: Cỗ máy nhặt giá)
 
 DATA SOURCE: https://bgapidatafeed.vps.com.vn/getliststockdata
+
+(Vd: "https://bgapidatafeed.vps.com.vn/getliststockdata/FPT, HAG, VCI, MBB, STB, FUEVFVND, MBS, BAF, DXG, SHB")
+
+
+Anh cứ git pull bản mới nhất về.
+Sau đó bảo em: "Check lại git log và code hiện tại xem a đã làm đến đâu rồi".
+Em sẽ tự động đọc lịch sử commit và nội dung file để "nhập hồn" vào đúng trạng thái anh vừa dừng lại ở máy kia.

@@ -77,11 +77,11 @@ export default function LiveTicker() {
 
         return (
             <div key={symbol} className="flex items-center gap-2 px-6 border-r border-slate-100 whitespace-nowrap group hover:bg-slate-100/50 transition-colors h-full">
-                <span className="text-[11px] font-black text-slate-800 group-hover:scale-110 transition-transform">{symbol}</span>
-                <span className={`text-[11px] font-bold tabular-nums ${colorClass}`}>
+                <span className="text-[13px] font-medium text-slate-800 group-hover:scale-105 transition-transform">{symbol}</span>
+                <span className={`text-[13px] font-medium tabular-nums ${colorClass}`}>
                     {(data.price / 1000).toLocaleString('en-US', { minimumFractionDigits: 1 })}
                 </span>
-                <span className={`text-[10px] font-bold tabular-nums flex items-center gap-0.5 ${colorClass}`}>
+                <span className={`text-[12px] font-medium tabular-nums flex items-center gap-0.5 ${colorClass}`}>
                     {change > 0 ? '▲' : change < 0 ? '▼' : '■'} {Math.abs(changePct).toFixed(1)}%
                 </span>
             </div>
@@ -90,7 +90,7 @@ export default function LiveTicker() {
 
     return (
         <div className="h-10 bg-slate-50 border border-slate-200 flex items-center overflow-hidden rounded-xl shadow-sm group relative">
-            <div className="bg-emerald-500 text-white text-[9px] font-black px-2.5 h-full flex items-center z-10 shadow-md">LIVE</div>
+            <div className="bg-emerald-500 text-white text-[9px] font-bold px-4 h-full flex items-center z-10 rounded-l-xl">LIVE</div>
 
             <div className="flex-1 overflow-hidden relative h-full flex items-center">
                 {!isEditing ? (

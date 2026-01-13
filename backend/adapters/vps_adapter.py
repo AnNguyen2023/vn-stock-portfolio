@@ -12,77 +12,93 @@ def get_realtime_prices_vps(symbols: list[str]) -> dict:
     if not symbols:
         return {}
 
-    # VPS API format requires comma-separated symbols
-    # Clean symbols and join
+    # Clean symbols
     clean_symbols = [s.strip().upper() for s in symbols if s.strip()]
     if not clean_symbols:
         return {}
-        
-    query_str = ",".join(clean_symbols)
-    url = f"https://bgapidatafeed.vps.com.vn/getliststockdata/{query_str}"
+
+    # Divide symbols into Stocks and Indices
+    # Map index names to VPS numeric codes
+    indices_map = {
+        "VNINDEX": "10",
+        "VN30": "11",
+        "HNX30": "12"
+    }
+    
+    req_indices_codes = [indices_map[s] for s in clean_symbols if s in indices_map]
+    req_stocks = [s for s in clean_symbols if s not in indices_map]
     
     results = {}
-    
-    try:
-        response = requests.get(url, timeout=5)
-        if response.status_code == 200:
-            data_list = response.json()
-            
-            # VPS returns a list of objects.
-            # Map fields:
-            # "sym": "FPT"
-            # "lastPrice": 97.4 (Current Price)
-            # "r": 96.5 (Reference Price)
-            # "c": 103.2 (Ceiling)
-            # "f": 89.8 (Floor)
-            # "lot": 1004870 (Total Volume? Or 'lastVolume'?)
-            # Usually 'lot' in these APIs refers to total accumulated volume.
-            
-            for item in data_list:
-                sym = item.get("sym", "").upper()
-                if not sym:
-                    continue
+
+    # 1. Fetch Stocks
+    if req_stocks:
+        query_str = ",".join(req_stocks)
+        url_stocks = f"https://bgapidatafeed.vps.com.vn/getliststockdata/{query_str}"
+        try:
+            resp = requests.get(url_stocks, timeout=5)
+            if resp.status_code == 200:
+                for item in resp.json():
+                    sym = item.get("sym", "").upper()
+                    if not sym: continue
                     
-                # Identify if the symbol is an Index
-                # Indices values are in points, assume raw value is correct
-                # Stocks are in 1000 VND, so x1000
-                is_index = sym in ["VNINDEX", "VN30", "HNX30", "HNX", "UPCOM"]
-                price_multiplier = 1 if is_index else 1000
+                    price = float(item.get("lastPrice", 0)) * 1000
+                    ref = float(item.get("r", 0)) * 1000
+                    volume = float(item.get("lot", 0)) * 10 
+                    
+                    val_raw = item.get("totalVal") or item.get("totalValue") or item.get("val") or 0
+                    value = float(str(val_raw).replace(",", "")) / 1e9 if val_raw else 0
+                    
+                    results[sym] = {
+                        "price": price, "ref": ref, 
+                        "ceiling": float(item.get("c", 0)) * 1000,
+                        "floor": float(item.get("f", 0)) * 1000,
+                        "volume": volume, "value": value
+                    }
+        except Exception as e:
+            logger.error(f"[VPS] Stock fetch error: {e}")
+
+    # 2. Fetch Indices
+    if req_indices_codes:
+        codes_str = ",".join(req_indices_codes)
+        url_indices = f"https://bgapidatafeed.vps.com.vn/getlistindexdetail/{codes_str}"
+        try:
+            resp = requests.get(url_indices, timeout=5)
+            if resp.status_code == 200:
+                index_data = resp.json()
+                # Reverse map codes back to symbols
+                code_to_sym = {v: k for k, v in indices_map.items()}
                 
-                # VPS returns prices in '1000 VND' for stocks (e.g., 96.5 -> 96500)
-                # For indices, return as is.
-                
-                price = float(item.get("lastPrice", 0)) * price_multiplier
-                ref = float(item.get("r", 0)) * price_multiplier
-                ceiling = float(item.get("c", 0)) * price_multiplier
-                floor = float(item.get("f", 0)) * price_multiplier
-                
-                # 'lot' seems to be Total Volume based on large numbers seen in test
-                # We adhere to the previous crawler logic which multiplied volume by 10 for stocks
-                # For Indices, volume logic might be different but let's keep x10 for consistence unless proven otherwise?
-                # Actually, index volume from VPS might need check. But let's stick to x10 or x1 for now.
-                # Usually Index volume is raw shares. Let's try x1 for Index and x10 for Stocks.
-                vol_multiplier = 1 if is_index else 10
-                volume = float(item.get("lot", 0)) * vol_multiplier
-                
-                # Extract trading value (in billions)
-                # VPS might have fields like 'totalVal', 'totalValue', 'val', etc.
-                # Try common field names
-                value_raw = item.get("totalVal") or item.get("totalValue") or item.get("val") or 0
-                value = float(value_raw) / 1e9 if value_raw else 0
-                
-                results[sym] = {
-                    "price": price,
-                    "ref": ref,
-                    "ceiling": ceiling,
-                    "floor": floor,
-                    "volume": volume,
-                    "value": value
-                }
-        else:
-            logger.error(f"[VPS] Error fetching data: Status {response.status_code}")
+                for item in index_data:
+                    code = str(item.get("mc", ""))
+                    sym = code_to_sym.get(code)
+                    if not sym: continue
+                    
+                    price = float(item.get("cIndex", 0))
+                    # ot field: change|change%|value|up|down|ref
+                    ot = item.get("ot", "")
+                    ot_parts = ot.split("|") if ot else []
+                    
+                    value = 0
+                    if len(ot_parts) >= 3:
+                        # Third part is liquidity (Value). 
+                        # Based on observation, VPS Index API 'ot' value part is usually in MILLIONS of VND.
+                        # We want it in BILLIONS of VND. So divide by 1000.
+                        raw_val = float(ot_parts[2].replace(",", ""))
+                        value = raw_val / 1000
+                    else:
+                        # Fallback to 'value' field if present
+                        val_raw = item.get("value") or 0
+                        value = float(str(val_raw).replace(",", "")) / 1000
+                        
+                    results[sym] = {
+                        "price": price, 
+                        "ref": price - (float(ot_parts[0]) if len(ot_parts) > 0 else 0),
+                        "ceiling": 0,
+                        "floor": 0,
+                        "volume": float(item.get("vol", 0)), 
+                        "value": value
+                    }
+        except Exception as e:
+            logger.error(f"[VPS] Index fetch error: {e}")
             
-    except Exception as e:
-        logger.error(f"[VPS] Exception fetching data: {e}")
-        
     return results

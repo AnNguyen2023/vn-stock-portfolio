@@ -70,7 +70,7 @@ export default function MarketSummary() {
                             </div>
                         </div>
                         <div className="flex items-baseline gap-2">
-                            <span className={`text-[28px] font-black tabular-nums tracking-tight ${isPositive ? 'text-emerald-600' : 'text-rose-600'}`}>
+                            <span className={`text-[25px] font-bold tabular-nums tracking-tight ${isPositive ? 'text-emerald-600' : 'text-rose-600'}`}>
                                 {displayPrice?.toLocaleString('en-US', { minimumFractionDigits: 2, maximumFractionDigits: 2 })}
                             </span>
                         </div>
@@ -105,18 +105,18 @@ export default function MarketSummary() {
                 <div className="flex items-center justify-between text-[10px] text-slate-500 relative z-10 border-t border-slate-100 pt-2 px-1">
                     <div className="flex flex-col">
                         <span className="text-[10px] font-black text-slate-500 uppercase tracking-widest leading-tight">Khối lượng</span>
-                        <span className="text-[12.5px] font-medium text-slate-900 tabular-nums">
+                        <span className="text-[14.5px] font-bold text-slate-900 tabular-nums">
                             {indexData.volume > 0
-                                ? `${(indexData.volume / 1e6).toLocaleString('en-US', { maximumFractionDigits: 1 })}M`
-                                : '--'}
+                                ? `${Math.floor(indexData.volume / 1000).toLocaleString('en-US')}M CP`
+                                : '-- CP'}
                         </span>
                     </div>
 
                     <div className="flex flex-col items-end">
                         <span className="text-[10px] font-black text-slate-500 uppercase tracking-widest leading-tight">Thanh khoản</span>
-                        <span className="text-[12.5px] font-medium text-slate-900 tabular-nums">
+                        <span className="text-[14.5px] font-bold text-slate-900 tabular-nums">
                             {indexData.value > 0
-                                ? `${indexData.value.toLocaleString('en-US', { minimumFractionDigits: 1, maximumFractionDigits: 1 })} Tỷ`
+                                ? `${indexData.value.toLocaleString('en-US', { minimumFractionDigits: 3, maximumFractionDigits: 3 })} Tỷ`
                                 : '-- Tỷ'}
                         </span>
                     </div>
@@ -128,29 +128,30 @@ export default function MarketSummary() {
     return (
         <div className="bg-white rounded-2xl shadow-sm border border-slate-300 p-3 mb-6">
             {/* Header */}
-            <div className="flex flex-col md:flex-row items-center justify-between mb-3 gap-3">
-                <div className="flex items-center gap-3">
+            <div className="flex items-center justify-between mb-3 gap-4">
+                <div className="flex items-center gap-3 whitespace-nowrap">
                     <BarChart3 size={18} className="text-slate-600" />
-                    <h3 className="text-base font-black text-slate-700 uppercase tracking-tighter">Thông tin Thị trường</h3>
+                    <h3 className="text-[14px] sm:text-base font-black text-slate-700 uppercase tracking-tighter">Thông tin Thị trường</h3>
                     {data && data.length > 0 && data[0].last_updated && (
-                        <span className="text-xs font-bold text-slate-400">
+                        <span className="text-xs font-bold text-slate-400 hidden md:inline">
                             {new Date(data[0].last_updated).toLocaleDateString('vi-VN')}
                         </span>
                     )}
                 </div>
 
-                <div className="flex-1 max-w-3xl px-2">
-                    <LiveTicker />
+                <div className="flex-1 min-w-0 flex items-center gap-2">
+                    <div className="flex-1 min-w-0">
+                        <LiveTicker />
+                    </div>
+                    <button
+                        onClick={fetchData}
+                        disabled={loading}
+                        className="h-10 w-10 flex items-center justify-center bg-slate-50 border border-slate-200 rounded-xl hover:bg-slate-100 hover:border-slate-300 transition-all shadow-sm group"
+                        title="Làm mới"
+                    >
+                        <RefreshCw size={14} className={`text-slate-400 group-hover:text-emerald-500 ${loading ? 'animate-spin' : ''}`} />
+                    </button>
                 </div>
-
-                <button
-                    onClick={fetchData}
-                    disabled={loading}
-                    className="p-1.5 hover:bg-slate-100 rounded-lg transition-colors"
-                    title="Làm mới"
-                >
-                    <RefreshCw size={14} className={`text-slate-400 ${loading ? 'animate-spin' : ''}`} />
-                </button>
             </div>
 
             {loading && !data ? (

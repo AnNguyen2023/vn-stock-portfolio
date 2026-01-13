@@ -29,7 +29,7 @@ const LightweightChart = ({
             layout: {
                 background: { type: ColorType.Solid, color: colors.backgroundColor },
                 textColor: colors.textColor,
-                fontSize: 10,
+                fontSize: 11,
                 fontFamily: 'Inter, sans-serif',
                 attributionLogo: false,
             },

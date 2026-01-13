@@ -76,7 +76,10 @@ export default function StockTable({ data, buyForm, setBuyForm, setSellForm, set
   };
   return (
     <div className="bg-white rounded-2xl shadow-sm border border-slate-400 overflow-hidden mb-6">
-      <div className="p-5 border-b border-slate-300 flex justify-between items-center bg-white">
+      <div
+        onMouseEnter={() => setIsExpanded(true)}
+        className="p-5 border-b border-slate-300 flex justify-between items-center bg-white cursor-pointer"
+      >
         <div className="flex items-center gap-3">
           <div className="flex items-center gap-2">
             <List size={20} className="text-slate-600" />
