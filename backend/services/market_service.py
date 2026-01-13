@@ -15,7 +15,7 @@ from sqlalchemy.orm import Session
 import models
 import crawler
 from core.db import SessionLocal
-from core.redis_client import get_redis
+from core.redis_client import get_redis, cache_get, cache_set
 from core.logger import logger
 
 # New Adapters
@@ -24,37 +24,12 @@ from adapters import vci_adapter, vnstock_adapter
 redis_client = get_redis()
 REDIS_AVAILABLE = redis_client is not None
 
-# --- IN-MEMORY CACHE (FALLBACK KHI REDIS DIE) ---
-MEMORY_CACHE: dict[str, tuple[Any, float]] = {}
-
+# --- UNIFIED CACHING ALIASES ---
 def mem_get(key: str) -> Optional[Any]:
-    """
-    Retrieves data from RAM if it exists and has not expired.
-
-    Args:
-        key (str): Cache key.
-
-    Returns:
-        Optional[Any]: Cached value or None if expired/not found.
-    """
-    if key in MEMORY_CACHE:
-        val, exp = MEMORY_CACHE[key]
-        if time.time() < exp:
-            return val
-        else:
-            del MEMORY_CACHE[key]
-    return None
+    return cache_get(key)
 
 def mem_set(key: str, val: Any, ttl: int) -> None:
-    """
-    Stores data in RAM with a Time To Live (TTL).
-
-    Args:
-        key (str): Cache key.
-        val (Any): Value to store.
-        ttl (int): Time to live in seconds.
-    """
-    MEMORY_CACHE[key] = (val, time.time() + ttl)
+    cache_set(key, val, ttl)
 
 def _process_single_ticker(t: str, p_info: dict, sec_info: dict | None = None) -> dict:
     """Hàm xử lý logic cho 1 mã (chạy trong thread)"""
@@ -433,18 +408,10 @@ def get_trending_indicator(ticker: str, db: Session, background_tasks: Optional[
     ticker = ticker.upper()
     cache_key = f"trending:{ticker}"
     
-    # 1. Try Cache layers
-    if REDIS_AVAILABLE:
-        try:
-            cached = redis_client.get(cache_key)
-            if cached:
-                return json.loads(cached)
-        except Exception as e:
-            logger.debug(f"Redis cache read failed for {cache_key}: {e}")
-    
-    cached_mem = mem_get(cache_key)
-    if cached_mem:
-        return cached_mem
+    # 1. Try Cache layers (RAM L1 -> Redis L2) via unified cache_get
+    cached = cache_get(cache_key)
+    if cached:
+        return cached
     
     # 2. Calculate from DB
     prices = (
@@ -477,14 +444,8 @@ def get_trending_indicator(ticker: str, db: Session, background_tasks: Optional[
     
     result = {"trend": trend, "change_pct": round(change_pct, 2)}
     
-    # 3. Save to Cache
-    if REDIS_AVAILABLE:
-        try:
-            redis_client.setex(cache_key, 300, json.dumps(result))
-        except Exception as e:
-            logger.debug(f"Redis cache write failed for {cache_key}: {e}")
-    
-    mem_set(cache_key, result, 300)
+    # 3. Save to Cache (RAM + Redis) with 15m TTL (900s)
+    cache_set(cache_key, result, 900)
     return result
 
 def _process_market_row(row: Any, index_name: str, db: Session, vps_data: dict = None) -> Optional[dict]:

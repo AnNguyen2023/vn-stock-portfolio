@@ -81,26 +81,59 @@ def safe_flushall() -> None:
     except Exception:
         pass
 
+# --- LEVEL 1 CACHE (RAM) TO SAVE REDIS COMMANDS ---
+_MEMORY_CACHE: dict[str, tuple[Any, float]] = {}
+
+def _mem_get(key: str) -> Optional[Any]:
+    if key in _MEMORY_CACHE:
+        val, exp = _MEMORY_CACHE[key]
+        if time.time() < exp:
+            return val
+        del _MEMORY_CACHE[key]
+    return None
+
+def _mem_set(key: str, val: Any, ttl: int) -> None:
+    _MEMORY_CACHE[key] = (val, time.time() + ttl)
+
 def cache_get(key: str):
+    # 1. Check RAM first (L1)
+    cached_mem = _mem_get(key)
+    if cached_mem is not None:
+        return cached_mem
+
+    # 2. Check Redis (L2)
     r = get_redis()
     if not r:
         return None
     try:
         v = r.get(key)
-        return json.loads(v) if v else None
+        if v:
+            data = json.loads(v)
+            # Store back in RAM for 10s to buffer frequent requests
+            _mem_set(key, data, 10)
+            return data
+        return None
     except Exception:
         return None
 
 def cache_set(key: str, value: Any, ttl: int = 300, ex: Optional[int] = None) -> None:
     """ttl hoặc ex (giống redis-py). ưu tiên ex nếu có."""
+    seconds = int(ex) if ex is not None else int(ttl)
+    
+    # 1. Update RAM (L1)
+    _mem_set(key, value, seconds)
+
+    # 2. Update Redis (L2)
     r = get_redis()
     if not r:
         return
     try:
-        seconds = int(ex) if ex is not None else int(ttl)
         r.setex(key, seconds, json.dumps(value, default=str))
     except Exception:
         pass
 
 def cache_delete(*keys: str) -> None:
+    for k in keys:
+        if k in _MEMORY_CACHE:
+            del _MEMORY_CACHE[k]
     safe_cache_delete(*keys)
