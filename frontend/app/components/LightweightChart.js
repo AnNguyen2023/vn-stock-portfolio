@@ -92,12 +92,19 @@ const LightweightChart = ({
             },
         });
 
-        // 4. Centering Logic
+        // 4. Centering Logic (Visible but transparent to force scale)
         const limitSeries = chart.addSeries(LineSeries, {
             color: 'transparent',
-            visible: false,
+            visible: true,
             lastValueVisible: false,
             priceLineVisible: false,
+            crosshairMarkerVisible: false,
+            autoscaleInfoProvider: () => ({
+                priceRange: {
+                    minValue: refPrice - (Math.max(Math.abs(Math.max(...(data.map(d => d.p).filter(v => v != null)) || [refPrice]) - refPrice), Math.abs(Math.min(...(data.map(d => d.p).filter(v => v != null)) || [refPrice]) - refPrice)) * 1.1 + refPrice * 0.0005),
+                    maxValue: refPrice + (Math.max(Math.abs(Math.max(...(data.map(d => d.p).filter(v => v != null)) || [refPrice]) - refPrice), Math.abs(Math.min(...(data.map(d => d.p).filter(v => v != null)) || [refPrice]) - refPrice)) * 1.1 + refPrice * 0.0005),
+                },
+            }),
         });
 
         // 5. Data Processing
@@ -129,14 +136,24 @@ const LightweightChart = ({
             const diff = Math.max(Math.abs(maxP - refPrice), Math.abs(minP - refPrice));
             const range = Math.max(diff * 1.1, refPrice * 0.0005);
 
+            // Force X-axis range from 9:00 to 15:00
             const times = chartPoints.map(p => p.time);
-            const startTime = times[0];
-            const endTime = times.length > 1 ? times[times.length - 1] : startTime + 60;
+            const dataStartTime = times[0];
+            const sessionDate = new Date(dataStartTime * 1000);
+            sessionDate.setHours(9, 0, 0, 0);
+            const sessionStartTs = Math.floor(sessionDate.getTime() / 1000);
+            sessionDate.setHours(15, 0, 0, 0);
+            const sessionEndTs = Math.floor(sessionDate.getTime() / 1000);
 
             limitSeries.setData([
-                { time: startTime, value: refPrice + range },
-                { time: endTime, value: refPrice - range }
+                { time: sessionStartTs, value: refPrice + range },
+                { time: sessionEndTs, value: refPrice - range }
             ]);
+
+            chart.timeScale().setVisibleRange({
+                from: sessionStartTs,
+                to: sessionEndTs,
+            });
         }
 
         if (volumePoints.length > 0) volumeSeries.setData(volumePoints);

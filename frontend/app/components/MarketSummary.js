@@ -110,7 +110,7 @@ export default function MarketSummary() {
                         <span className="text-[10px] font-black text-slate-500 uppercase tracking-widest leading-tight">Khối lượng</span>
                         <span className="text-[14.5px] font-bold text-slate-900 tabular-nums">
                             {indexData.volume > 0
-                                ? `${Math.floor(indexData.volume / 1000).toLocaleString('en-US')}M CP`
+                                ? `${(indexData.volume / 1000000).toLocaleString('en-US', { minimumFractionDigits: 1, maximumFractionDigits: 1 })}M CP`
                                 : '-- CP'}
                         </span>
                     </div>

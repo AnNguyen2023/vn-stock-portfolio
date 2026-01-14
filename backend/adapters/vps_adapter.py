@@ -35,7 +35,8 @@ def get_realtime_prices_vps(symbols: list[str]) -> dict:
     indices_map = {
         "VNINDEX": "10",
         "VN30": "11",
-        "HNX30": "12"
+        "HNX": "02",
+        "UPCOM": "03"
     }
     
     req_indices_codes = [indices_map[s] for s in clean_symbols if s in indices_map]
@@ -94,7 +95,7 @@ def get_realtime_prices_vps(symbols: list[str]) -> dict:
                     ot_parts = ot.split("|") if ot else []
                     
                     value = 0
-                    if len(ot_parts) >= 3 and ot_parts[2]:
+                    if len(ot_parts) >= 3:
                         # Third part is liquidity (Value). 
                         # VPS Index API 'ot' value part is in MILLIONS of VND.
                         # We want it in BILLIONS of VND. So divide by 1000.
