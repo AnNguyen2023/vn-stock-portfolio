@@ -75,7 +75,7 @@ export default function useTradeActions(fetchAllData) {
 
     const handlePriceBlur = (type) => {
         const form = type === "buy" ? buyForm : sellForm;
-        let valStr = form.price.toString().replace(/,/g, "");
+        let valStr = (form.price || "").toString().replace(/,/g, "");
         let val = parseFloat(valStr);
         if (!val) return;
         if (val < 1000) val = val * 1000;

@@ -1,7 +1,7 @@
 import React from 'react';
 import { TrendingUp, TrendingDown, Minus, ArrowUp, ArrowDown } from 'lucide-react';
 
-export default function TrendingIcon({ trend, changePct = 0, size = 24 }) {
+export default function TrendingIcon({ trend, changePct = 0, size = 24, textSize = "text-base", fontWeight = "font-bold" }) {
     const iconProps = { size, strokeWidth: 2.5 };
 
     // Color themes matching stock price colors
@@ -50,7 +50,7 @@ export default function TrendingIcon({ trend, changePct = 0, size = 24 }) {
     const displayPct = changePct > 0 ? `+${changePct.toFixed(2)}%` : `${changePct.toFixed(2)}%`;
 
     return (
-        <div className={`inline-flex items-center gap-1.5 ${theme.bg} ${theme.color} px-2.5 py-1 rounded-lg font-bold text-base`}>
+        <div className={`inline-flex items-center gap-1.5 ${theme.bg} ${theme.color} px-2.5 py-1 rounded-lg ${fontWeight} ${textSize}`}>
             {theme.icon}
             <span className="tabular-nums">{displayPct}</span>
         </div>

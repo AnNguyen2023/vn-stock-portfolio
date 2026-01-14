@@ -1,27 +1,13 @@
 "use client";
-import { useState, useEffect } from 'react';
 import { TrendingUp, TrendingDown, Minus } from "lucide-react";
 import TrendingIcon from "./TrendingIcon";
+import { useFlashAnimation } from "../hooks/useFlashAnimation";
+import { getStockTheme } from "../utils/stockTheme";
 
 export default function WatchlistRow({ item, onRemove, isSelected, onToggle }) {
-    const [priceFlash, setPriceFlash] = useState(false);
-    const [changeFlash, setChangeFlash] = useState(false);
-    const [prevPrice, setPrevPrice] = useState(item.price);
-    const [prevChange, setPrevChange] = useState(item.change_pct);
+    const priceFlash = useFlashAnimation(item.price);
+    const changeFlash = useFlashAnimation(item.change_pct);
 
-    // Trigger flash animation when values change
-    useEffect(() => {
-        if (item.price !== prevPrice) {
-            setPriceFlash(true);
-            setPrevPrice(item.price);
-            setTimeout(() => setPriceFlash(false), 600);
-        }
-        if (item.change_pct !== prevChange) {
-            setChangeFlash(true);
-            setPrevChange(item.change_pct);
-            setTimeout(() => setChangeFlash(false), 600);
-        }
-    }, [item.price, item.change_pct, prevPrice, prevChange]);
 
     // Priority: use item.trending from batch API, fallback to sideways default
     const trending = item.trending || { trend: "sideways", change_pct: 0 };
@@ -112,27 +98,27 @@ export default function WatchlistRow({ item, onRemove, isSelected, onToggle }) {
             </td>
             <td className="p-3 relative">
                 <div className={`absolute left-0 top-3 bottom-3 w-1.5 rounded-r-full ${theme.bg}`}></div>
-                <div>
+                <div className="flex flex-col items-center">
                     <div className={`font-medium text-[13px] ${theme.text}`}>{item.ticker}</div>
                     <div className="text-[10px] text-slate-400 font-medium truncate max-w-[100px]">{item.organ_name}</div>
                 </div>
             </td>
 
-            <td className="p-3 text-right">
+            <td className="p-3 text-center">
                 <span className={`text-[13px] font-medium tabular-nums ${theme.priceColor} transition-all duration-300 ${priceFlash ? 'bg-emerald-100 scale-105 px-1 rounded' : ''}`}>
                     {item.price?.toLocaleString('en-US', { minimumFractionDigits: 0, maximumFractionDigits: 0 })}
                 </span>
             </td>
 
-            <td className="p-3 text-right">
+            <td className="p-3 text-center">
                 <div className={`inline-flex items-center gap-1 px-2 py-1 rounded-md font-medium text-[13px] tabular-nums ${theme.badgeClass} transition-all duration-300 ${changeFlash ? 'ring-2 ring-emerald-400 scale-105' : ''}`}>
                     {theme.icon}
                     {item.change_pct >= 0 ? '+' : ''}{item.change_pct?.toFixed(2)}%
                 </div>
             </td>
 
-            <td className="p-3 text-center bg-amber-100/40 w-20">
-                <TrendingIcon trend={trending.trend} changePct={trending.change_pct} size={22} />
+            <td className="p-3 text-center bg-amber-100/40 w-24">
+                <TrendingIcon trend={trending.trend} changePct={trending.change_pct} size={20} textSize="text-[15px]" fontWeight="font-medium" />
             </td>
 
             <td className="p-3 text-right font-medium text-slate-600 text-sm tabular-nums">

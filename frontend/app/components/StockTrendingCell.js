@@ -16,5 +16,5 @@ export default function StockTrendingCell({ ticker, trending: preFetchedTrending
         }
     }, [ticker, preFetchedTrending]);
 
-    return <TrendingIcon trend={trending.trend} changePct={trending.change_pct} size={26} />;
+    return <TrendingIcon trend={trending.trend} changePct={trending.change_pct} size={20} textSize="text-[15px]" fontWeight="font-medium" />;
 }

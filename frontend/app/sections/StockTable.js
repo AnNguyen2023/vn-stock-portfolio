@@ -124,18 +124,35 @@ export default function StockTable({ data, buyForm, setBuyForm, setSellForm, set
           <table className="w-full text-left border-collapse">
             <thead className="bg-slate-50/50 text-slate-500 text-[13px] uppercase font-bold tracking-[0.12em] border-b border-slate-200">
               <tr>
-                <th className="p-4 pl-6 cursor-pointer hover:bg-emerald-100 transition-colors border-r border-slate-200 whitespace-nowrap" onClick={() => requestSort('ticker')}>Mã CK <SortIcon columnKey="ticker" /></th>
+                <th className="p-4 pl-6 cursor-pointer hover:bg-emerald-100 transition-colors border-r border-slate-200 whitespace-nowrap" onClick={() => requestSort('ticker')}>
+                  <div className="flex items-center justify-center gap-1">
+                    Mã CK <SortIcon columnKey="ticker" />
+                  </div>
+                </th>
                 <th className="p-4 text-right cursor-pointer hover:bg-emerald-100 transition-colors border-r border-slate-200 whitespace-nowrap" onClick={() => requestSort('volume')}>SL <SortIcon columnKey="volume" /></th>
                 <th className="p-4 text-right cursor-pointer hover:bg-emerald-100 transition-colors border-r border-slate-200 whitespace-nowrap" onClick={() => requestSort('avg_price')}>Giá TB <SortIcon columnKey="avg_price" /></th>
-                <th className="p-4 text-right cursor-pointer hover:bg-emerald-100 transition-colors border-r border-slate-200 whitespace-nowrap" onClick={() => requestSort('current_price')}>Giá TT <SortIcon columnKey="current_price" /></th>
+                <th className="p-4 text-center cursor-pointer hover:bg-emerald-100 transition-colors border-r border-slate-200 whitespace-nowrap" onClick={() => requestSort('current_price')}>
+                  <div className="flex items-center justify-center gap-1">
+                    Giá TT <SortIcon columnKey="current_price" />
+                  </div>
+                </th>
                 <th className="p-4 text-right cursor-pointer hover:bg-emerald-100 transition-colors border-r border-slate-200 whitespace-nowrap" onClick={() => requestSort('current_value')}>Giá trị <SortIcon columnKey="current_value" /></th>
-                <th className="p-4 text-right cursor-pointer hover:bg-emerald-100 transition-colors border-r border-slate-200 whitespace-nowrap" onClick={() => requestSort('profit_loss')}>Lãi/Lỗ <SortIcon columnKey="profit_loss" /></th>
+                <th className="py-4 pl-0 pr-2 w-[8%] text-center cursor-pointer hover:bg-emerald-100 transition-colors border-r border-slate-200 whitespace-nowrap" onClick={() => requestSort('profit_loss')}>
+                  <div className="flex items-center justify-center gap-1">
+                    Lãi/Lỗ <SortIcon columnKey="profit_loss" />
+                  </div>
+                </th>
                 <th className="p-4 text-center w-32 cursor-pointer hover:bg-emerald-100 transition-colors border-r border-slate-200 whitespace-nowrap" onClick={() => requestSort('weight')}>Tỷ trọng <SortIcon columnKey="weight" /></th>
                 <th className="p-4 text-center border-r border-slate-200 whitespace-nowrap cursor-pointer bg-amber-100/60 hover:bg-amber-100/80 transition-colors" onClick={() => requestSort('trending')}>
-                  <div className="text-sm font-medium">Xu hướng <SortIcon columnKey="trending" /></div>
-                  <div className="text-[9px] text-slate-800 font-normal">(5 phiên)</div>
+                  <div className="flex items-center justify-center gap-1 text-[13px] font-bold">
+                    XU HƯỚNG (5 PHIÊN) <SortIcon columnKey="trending" />
+                  </div>
                 </th>
-                <th className="p-4 text-right cursor-pointer hover:bg-emerald-100 transition-colors border-r border-slate-200 whitespace-nowrap" onClick={() => requestSort('today_change_percent')}>Hôm nay <SortIcon columnKey="today_change_percent" /></th>
+                <th className="p-4 text-center cursor-pointer hover:bg-emerald-100 transition-colors border-r border-slate-200 whitespace-nowrap" onClick={() => requestSort('today_change_percent')}>
+                  <div className="flex items-center justify-center gap-1">
+                    Hôm nay <SortIcon columnKey="today_change_percent" />
+                  </div>
+                </th>
                 <th className="p-4 text-center whitespace-nowrap">Thao tác</th>
               </tr>
             </thead>

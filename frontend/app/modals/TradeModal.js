@@ -15,21 +15,21 @@ export default function TradeModal({
           <form onSubmit={handleBuy} className="space-y-5">
             <div>
               <label className="text-sm font-medium text-slate-600 uppercase tracking-widest ml-1 mb-2 block">Mã Chứng Khoán</label>
-              <input type="text" required autoFocus className="w-full p-4 bg-slate-50 border border-slate-100 rounded-2xl text-sm font-black uppercase outline-none focus:ring-4 focus:ring-rose-100 transition-all" value={buyForm.ticker} onChange={(e) => setBuyForm({ ...buyForm, ticker: e.target.value.replace(/[^a-zA-Z0-9]/g, '').toUpperCase() })} />
+              <input type="text" required autoFocus className="w-full p-4 bg-slate-50 border border-slate-100 rounded-2xl text-sm font-black uppercase outline-none focus:ring-4 focus:ring-rose-100 transition-all" value={buyForm.ticker || ""} onChange={(e) => setBuyForm({ ...buyForm, ticker: e.target.value.replace(/[^a-zA-Z0-9]/g, '').toUpperCase() })} />
             </div>
             <div className="grid grid-cols-2 gap-4">
               <div>
                 <label className="text-sm font-medium text-slate-600 uppercase tracking-widest ml-1 mb-2 block">Khối lượng</label>
-                <input type="text" required className="w-full p-4 bg-slate-50 border border-slate-100 rounded-2xl text-sm font-bold outline-none focus:ring-4 focus:ring-rose-100" value={buyForm.volume} onChange={(e) => handleVolumeChange(e, 'buy')} />
+                <input type="text" required className="w-full p-4 bg-slate-50 border border-slate-100 rounded-2xl text-sm font-bold outline-none focus:ring-4 focus:ring-rose-100" value={buyForm.volume || ""} onChange={(e) => handleVolumeChange(e, 'buy')} />
               </div>
               <div>
                 <label className="text-sm font-medium text-slate-600 uppercase tracking-widest ml-1 mb-2 block">Giá đặt mua</label>
-                <input type="text" required className="w-full p-4 bg-slate-50 border border-slate-100 rounded-2xl text-sm font-bold outline-none focus:ring-4 focus:ring-rose-100" value={buyForm.price} onChange={(e) => handlePriceChange(e, 'buy')} onBlur={() => handlePriceBlur('buy')} />
+                <input type="text" required className="w-full p-4 bg-slate-50 border border-slate-100 rounded-2xl text-sm font-bold outline-none focus:ring-4 focus:ring-rose-100" value={buyForm.price || ""} onChange={(e) => handlePriceChange(e, 'buy')} onBlur={() => handlePriceBlur('buy')} />
               </div>
             </div>
             <div>
               <label className="text-sm font-medium text-slate-600 uppercase tracking-widest ml-1 mb-2 block">Ghi chú lệnh mua</label>
-              <textarea className="w-full p-3 bg-slate-50 border border-slate-100 rounded-2xl text-sm font-medium outline-none focus:ring-4 focus:ring-rose-100 min-h-[80px] resize-none" value={buyForm.note} onChange={(e) => setBuyForm({ ...buyForm, note: e.target.value })} />
+              <textarea className="w-full p-3 bg-slate-50 border border-slate-100 rounded-2xl text-sm font-medium outline-none focus:ring-4 focus:ring-rose-100 min-h-[80px] resize-none" value={buyForm.note || ""} onChange={(e) => setBuyForm({ ...buyForm, note: e.target.value })} />
             </div>
             {/* Sửa lại phần hiển thị Thành tiền trong Modal Mua */}
             <div className="p-4 bg-rose-50/50 rounded-2xl border border-rose-100 text-xl font-medium text-rose-700 text-center">
@@ -55,21 +55,21 @@ export default function TradeModal({
           <form onSubmit={handleSell} className="space-y-5">
             <div>
               <label className="text-sm font-medium text-slate-600 uppercase tracking-widest ml-1 mb-2 block">Mã Chứng Khoán</label>
-              <input type="text" readOnly className="w-full p-4 bg-slate-50 border border-slate-100 rounded-2xl text-sm font-black uppercase text-slate-500" value={sellForm.ticker} />
+              <input type="text" readOnly className="w-full p-4 bg-slate-50 border border-slate-100 rounded-2xl text-sm font-black uppercase text-slate-500" value={sellForm.ticker || ""} />
             </div>
             <div className="grid grid-cols-2 gap-4">
               <div>
                 <label className="text-sm font-medium text-slate-600 uppercase tracking-widest ml-1 mb-2 block">SL bán</label>
-                <input type="text" required className="w-full p-4 bg-slate-50 border border-slate-100 rounded-2xl text-sm font-bold outline-none focus:ring-4 focus:ring-emerald-100" value={sellForm.volume} onChange={(e) => handleVolumeChange(e, 'sell')} />
+                <input type="text" required className="w-full p-4 bg-slate-50 border border-slate-100 rounded-2xl text-sm font-bold outline-none focus:ring-4 focus:ring-emerald-100" value={sellForm.volume || ""} onChange={(e) => handleVolumeChange(e, 'sell')} />
               </div>
               <div>
                 <label className="text-sm font-medium text-slate-600 uppercase tracking-widest ml-1 mb-2 block">Giá bán</label>
-                <input type="text" required className="w-full p-4 bg-slate-50 border border-slate-100 rounded-2xl text-sm font-bold outline-none focus:ring-4 focus:ring-emerald-100" value={sellForm.price} onChange={(e) => handlePriceChange(e, 'sell')} onBlur={() => handlePriceBlur('sell')} />
+                <input type="text" required className="w-full p-4 bg-slate-50 border border-slate-100 rounded-2xl text-sm font-bold outline-none focus:ring-4 focus:ring-emerald-100" value={sellForm.price || ""} onChange={(e) => handlePriceChange(e, 'sell')} onBlur={() => handlePriceBlur('sell')} />
               </div>
             </div>
             <div>
               <label className="text-sm font-medium text-slate-600 uppercase tracking-widest ml-1 mb-2 block">Ghi chú lệnh bán</label>
-              <textarea className="w-full p-3 bg-slate-50 border border-slate-100 rounded-2xl text-sm font-medium outline-none focus:ring-4 focus:ring-emerald-100 min-h-[80px] resize-none" value={sellForm.note} onChange={(e) => setSellForm({ ...sellForm, note: e.target.value })} />
+              <textarea className="w-full p-3 bg-slate-50 border border-slate-100 rounded-2xl text-sm font-medium outline-none focus:ring-4 focus:ring-emerald-100 min-h-[80px] resize-none" value={sellForm.note || ""} onChange={(e) => setSellForm({ ...sellForm, note: e.target.value })} />
             </div>
             {/* Sửa lại phần hiển thị Thực nhận trong Modal Bán */}
             <div className="p-4 bg-emerald-50/50 rounded-2xl border border-emerald-100 text-xl font-medium text-emerald-700 text-center">
