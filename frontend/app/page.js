@@ -209,7 +209,7 @@ export default function Dashboard() {
       <div className="max-w-7xl mx-auto">
         <Header
           {...{
-            isPrivate, setIsPrivate, setShowDeposit, setShowWithdraw, setShowBuy,
+            isPrivate, setIsPrivate, setShowDeposit, setShowWithdraw, setShowBuy, setShowSell,
             fetchAllData, handleUndo
           }}
         />

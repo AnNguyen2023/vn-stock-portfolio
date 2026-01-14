@@ -87,22 +87,28 @@ def get_realtime_prices_vps(symbols: list[str]) -> dict:
                     if not sym: continue
                     
                     price = _safe_float(item.get("cIndex"))
+                    volume = _safe_float(item.get("vol"))
+                    
                     # ot field: change|change%|value|up|down|ref
                     ot = item.get("ot", "")
                     ot_parts = ot.split("|") if ot else []
                     
                     value = 0
-                    if len(ot_parts) >= 3:
+                    if len(ot_parts) >= 3 and ot_parts[2]:
                         # Third part is liquidity (Value). 
-                        # Based on observation, VPS Index API 'ot' value part is usually in MILLIONS of VND.
+                        # VPS Index API 'ot' value part is in MILLIONS of VND.
                         # We want it in BILLIONS of VND. So divide by 1000.
                         val_raw = _safe_float(ot_parts[2])
                         value = val_raw / 1000
-                    else:
-                        # Fallback to 'value' field if present
-                        val_raw = item.get("value") or 0
-                        value = _safe_float(val_raw) / 1000
-                        
+                        logger.info(f"[VPS] {sym} value from ot: {val_raw} -> {value} billion")
+                    
+                    # CRITICAL FIX: If value is still 0, estimate from volume
+                    if value == 0 and volume > 0:
+                        # Estimate: value ≈ volume * average_price / 1000 (to get billions)
+                        # For indices, use current price as proxy for average
+                        value = (volume * price) / 1000
+                        logger.warning(f"[VPS] {sym} estimated value from volume: {value:.3f} billion")
+                    
                     # Safe float conversion for change value (ot_parts[0])
                     change_val = _safe_float(ot_parts[0]) if len(ot_parts) > 0 else 0
                         
@@ -111,9 +117,10 @@ def get_realtime_prices_vps(symbols: list[str]) -> dict:
                         "ref": price - change_val,
                         "ceiling": 0,
                         "floor": 0,
-                        "volume": _safe_float(item.get("vol")), 
+                        "volume": volume, 
                         "value": value
                     }
+                    logger.info(f"[VPS] {sym}: price={price}, vol={volume}, value={value}")
         except Exception as e:
             logger.error(f"[VPS] Index fetch error: {e}")
             

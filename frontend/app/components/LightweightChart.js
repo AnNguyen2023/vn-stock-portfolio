@@ -1,6 +1,6 @@
 "use client";
 import React, { useEffect, useRef } from 'react';
-import { createChart, ColorType, BaselineSeries, HistogramSeries } from 'lightweight-charts';
+import { createChart, ColorType, BaselineSeries, HistogramSeries, LineSeries } from 'lightweight-charts';
 
 const LightweightChart = ({
     data,
@@ -8,13 +8,6 @@ const LightweightChart = ({
     isPositive,
     ticker,
     height = 120,
-    colors = {
-        backgroundColor: 'transparent',
-        lineColor: isPositive ? '#10b981' : '#ef4444',
-        textColor: '#64748b',
-        areaTopColor: isPositive ? 'rgba(16, 185, 129, 0.2)' : 'rgba(239, 68, 68, 0.2)',
-        areaBottomColor: 'rgba(255, 255, 255, 0)',
-    }
 }) => {
     const chartContainerRef = useRef();
 
@@ -27,15 +20,15 @@ const LightweightChart = ({
 
         const chart = createChart(chartContainerRef.current, {
             layout: {
-                background: { type: ColorType.Solid, color: colors.backgroundColor },
-                textColor: colors.textColor,
-                fontSize: 11,
+                background: { type: ColorType.Solid, color: 'transparent' },
+                textColor: '#64748b',
+                fontSize: 10,
                 fontFamily: 'Inter, sans-serif',
                 attributionLogo: false,
             },
             grid: {
-                vertLines: { color: 'rgba(148, 163, 184, 0.18)', style: 0, visible: true }, // Reduced by 40% (0.3 -> 0.18)
-                horzLines: { visible: false },
+                vertLines: { color: 'rgba(148, 163, 184, 0.1)', visible: true },
+                horzLines: { color: 'rgba(148, 163, 184, 0.1)', visible: true },
             },
             width: chartContainerRef.current.clientWidth,
             height: height,
@@ -44,46 +37,28 @@ const LightweightChart = ({
                 borderVisible: false,
                 secondsVisible: false,
                 timeVisible: true,
-                barSpacing: 1.8, // Even tighter to force ~50% more vertical lines (aiming for highly dense grid)
-                minBarSpacing: 0.5,
+                barSpacing: 2,
             },
             rightPriceScale: {
-                visible: false,
+                visible: true,
                 borderVisible: false,
-            },
-            localization: {
-                locale: 'vi-VN',
-            },
-            crosshair: {
-                vertLine: {
-                    color: '#0f172a',
-                    width: 1,
-                    style: 0, // Solid for better visibility
-                    labelVisible: false,
+                scaleMargins: {
+                    top: 0.15,
+                    bottom: 0.25,
                 },
-                horzLine: {
-                    color: '#0f172a',
-                    width: 1,
-                    style: 0, // Solid
-                    labelVisible: false,
-                },
-                mode: 0,
             },
             handleScroll: false,
             handleScale: false,
-            watermark: {
-                visible: false,
-            },
         });
 
-        // Use Baseline series for Green/Red split relative to refPrice (v5 API)
+        // 1. Baseline Series - Green above ref, Red below ref
         const areaSeries = chart.addSeries(BaselineSeries, {
             baseValue: { type: 'price', price: refPrice },
-            topLineColor: '#10b981',
-            topFillColor1: 'rgba(16, 185, 129, 0.15)', // Reduced by 40% (0.25 -> 0.15)
+            topLineColor: '#10b981',        // Green for prices ABOVE reference
+            topFillColor1: 'rgba(16, 185, 129, 0.15)',
             topFillColor2: 'rgba(16, 185, 129, 0.0)',
-            bottomLineColor: '#ef4444',
-            bottomFillColor1: 'rgba(239, 68, 68, 0.15)', // Reduced by 40% (0.25 -> 0.15)
+            bottomLineColor: '#ef4444',     // Red for prices BELOW reference
+            bottomFillColor1: 'rgba(239, 68, 68, 0.15)',
             bottomFillColor2: 'rgba(239, 68, 68, 0.0)',
             lineWidth: 2,
             priceLineVisible: false,
@@ -91,47 +66,41 @@ const LightweightChart = ({
             crosshairMarkerVisible: true,
         });
 
-
-        // Main Reference Price Line (Solid & Lightened further)
+        // 2. Reference Price Line (Dashed Yellow)
         areaSeries.createPriceLine({
             price: refPrice,
-            color: 'rgba(15, 23, 42, 0.44)', // Reduced another 20% (from 0.55)
+            color: '#eab308',
             lineWidth: 2,
-            lineStyle: 0, // Solid
-            axisLabelVisible: false,
-            title: '',
+            lineStyle: 2, // Dashed
+            axisLabelVisible: true,
+            title: `${refPrice.toLocaleString('en-US', { minimumFractionDigits: 2, maximumFractionDigits: 2 })}`,
         });
 
-        // Reduced Auxiliary Grid Lines (-40% density: only +/- 1%)
-        const auxOffsets = [0.01, -0.01];
-        auxOffsets.forEach(offset => {
-            areaSeries.createPriceLine({
-                price: refPrice * (1 + offset),
-                color: 'rgba(255, 140, 0, 0.4)', // Distinct Orange, slightly higher opacity for visibility
-                lineWidth: 1,
-                lineStyle: 2, // Dashed for better "interrupted" look
-                axisLabelVisible: false,
-                title: '',
-            });
-        });
-
-        // Add volume histogram (v5 API)
+        // 3. Volume Histogram
         const volumeSeries = chart.addSeries(HistogramSeries, {
-            color: '#64748b33',
+            color: '#64748b5c',
             priceFormat: { type: 'volume' },
-            priceScaleId: '', // overlay
+            priceScaleId: '',
             priceLineVisible: false,
             lastValueVisible: false,
         });
 
         volumeSeries.priceScale().applyOptions({
             scaleMargins: {
-                top: 0.8, // volume at the bottom
+                top: 0.8,
                 bottom: 0,
             },
         });
 
-        // Prepare data with deduplication and sorting (safeguard for lightweight-charts)
+        // 4. Centering Logic
+        const limitSeries = chart.addSeries(LineSeries, {
+            color: 'transparent',
+            visible: false,
+            lastValueVisible: false,
+            priceLineVisible: false,
+        });
+
+        // 5. Data Processing
         const processData = (rawData, valueKey) => {
             const seenTimes = new Set();
             return rawData
@@ -139,7 +108,6 @@ const LightweightChart = ({
                 .map(d => ({
                     time: d.timestamp,
                     value: d[valueKey],
-                    color: valueKey === 'v' ? '#64748b22' : undefined
                 }))
                 .filter(d => {
                     if (seenTimes.has(d.time)) return false;
@@ -152,18 +120,35 @@ const LightweightChart = ({
         const chartPoints = processData(data, 'p');
         const volumePoints = processData(data, 'v');
 
-        if (chartPoints.length > 0) areaSeries.setData(chartPoints);
+        if (chartPoints.length > 0) {
+            areaSeries.setData(chartPoints);
+
+            const prices = chartPoints.map(p => p.value);
+            const minP = Math.min(...prices);
+            const maxP = Math.max(...prices);
+            const diff = Math.max(Math.abs(maxP - refPrice), Math.abs(minP - refPrice));
+            const range = Math.max(diff * 1.1, refPrice * 0.0005);
+
+            const times = chartPoints.map(p => p.time);
+            const startTime = times[0];
+            const endTime = times.length > 1 ? times[times.length - 1] : startTime + 60;
+
+            limitSeries.setData([
+                { time: startTime, value: refPrice + range },
+                { time: endTime, value: refPrice - range }
+            ]);
+        }
+
         if (volumePoints.length > 0) volumeSeries.setData(volumePoints);
 
         chart.timeScale().fitContent();
-
         window.addEventListener('resize', handleResize);
 
         return () => {
             window.removeEventListener('resize', handleResize);
             chart.remove();
         };
-    }, [data, refPrice, colors, height]);
+    }, [data, refPrice, isPositive, height]);
 
     return (
         <div ref={chartContainerRef} className="w-full relative h-full" />

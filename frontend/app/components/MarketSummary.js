@@ -40,12 +40,13 @@ export default function MarketSummary() {
         if (!indexData) return null;
 
         const isPositive = indexData.change >= 0;
+
         const colorGreen = '#10b981';
         const colorRed = '#f43f5e';
 
         const displayPrice = indexData.price;
         const displayChange = indexData.change;
-        const refPrice = displayPrice - displayChange;
+        const refPrice = indexData.ref_price || (displayPrice - displayChange);
         const hasData = displayPrice > 0;
         const showChart = indexData.sparkline && indexData.sparkline.length > 0;
 
@@ -58,7 +59,7 @@ export default function MarketSummary() {
         }
 
         return (
-            <div className="flex-1 bg-slate-50 border border-slate-200 rounded-xl p-3 shadow-sm relative overflow-hidden flex flex-col group min-h-[220px] hover:shadow-md transition-shadow">
+            <div className="flex-1 bg-slate-50 border border-slate-200 rounded-xl p-3 shadow-sm relative overflow-hidden flex flex-col group min-h-[135px] hover:shadow-md transition-shadow">
                 {/* Header Info */}
                 <div className="flex justify-between items-start mb-1 relative z-10 px-1 pt-1">
                     <div className="flex flex-col">
@@ -70,7 +71,7 @@ export default function MarketSummary() {
                             </div>
                         </div>
                         <div className="flex items-baseline gap-2">
-                            <span className={`text-[25px] font-bold tabular-nums tracking-tight ${isPositive ? 'text-emerald-600' : 'text-rose-600'}`}>
+                            <span className={`text-[21px] font-bold tabular-nums tracking-tight ${isPositive ? 'text-emerald-600' : 'text-rose-600'}`}>
                                 {displayPrice?.toLocaleString('en-US', { minimumFractionDigits: 2, maximumFractionDigits: 2 })}
                             </span>
                         </div>
@@ -88,21 +89,23 @@ export default function MarketSummary() {
 
                 {/* Chart Area */}
                 <div className="flex-1 -mx-3 my-2 min-h-[100px] relative bg-white/50 overflow-hidden">
-                    {showChart ? (
-                        <LightweightChart
-                            data={indexData.sparkline}
-                            refPrice={refPrice}
-                            isPositive={isPositive}
-                            ticker={indexData.index}
-                            height={100}
-                        />
-                    ) : (
-                        <div className="h-full flex items-center justify-center text-slate-300 text-[10px] font-black uppercase tracking-widest">No Chart Data</div>
-                    )}
-                </div>
+                    {
+                        showChart ? (
+                            <LightweightChart
+                                data={indexData.sparkline}
+                                refPrice={refPrice}
+                                isPositive={isPositive}
+                                ticker={indexData.index}
+                                height={110}
+                            />
+                        ) : (
+                            <div className="h-full flex items-center justify-center text-slate-300 text-[10px] font-black uppercase tracking-widest">No Chart Data</div>
+                        )
+                    }
+                </div >
 
                 {/* Footer Info */}
-                <div className="flex items-center justify-between text-[10px] text-slate-500 relative z-10 border-t border-slate-100 pt-2 px-1">
+                < div className="flex items-center justify-between text-[10px] text-slate-500 relative z-10 border-t border-slate-100 pt-2 px-1" >
                     <div className="flex flex-col">
                         <span className="text-[10px] font-black text-slate-500 uppercase tracking-widest leading-tight">Khối lượng</span>
                         <span className="text-[14.5px] font-bold text-slate-900 tabular-nums">
@@ -120,8 +123,8 @@ export default function MarketSummary() {
                                 : '-- Tỷ'}
                         </span>
                     </div>
-                </div>
-            </div>
+                </div >
+            </div >
         );
     };
 

@@ -94,10 +94,10 @@ export default function WatchlistPro() {
             setLoading(true);
             fetchDetail();
 
-            // Thiết lập Auto-refresh mỗi 10 giây
+            // Thiết lập Auto-refresh mỗi 5 giây cho giá TT và % thay đổi
             const interval = setInterval(() => {
                 fetchDetail();
-            }, 10000);
+            }, 5000);
 
             return () => clearInterval(interval);
         }
@@ -425,18 +425,18 @@ export default function WatchlistPro() {
                                             )}
                                         </div>
                                     </th>
-                                    <th className="p-4 text-left cursor-pointer hover:bg-emerald-100 transition-colors" onClick={() => requestSort('ticker')}>
+                                    <th className="p-4 text-left cursor-pointer hover:bg-emerald-100 transition-colors w-24" onClick={() => requestSort('ticker')}>
                                         Mã CK <SortIcon columnKey="ticker" />
                                     </th>
-                                    <th className="p-4 text-right cursor-pointer hover:bg-emerald-100 transition-colors" onClick={() => requestSort('price')}>
+                                    <th className="p-4 text-right cursor-pointer hover:bg-emerald-100 transition-colors w-28" onClick={() => requestSort('price')}>
                                         Giá TT <SortIcon columnKey="price" />
                                     </th>
-                                    <th className="p-4 text-right cursor-pointer hover:bg-emerald-100 transition-colors" onClick={() => requestSort('change_pct')}>
+                                    <th className="p-4 text-right cursor-pointer hover:bg-emerald-100 transition-colors w-32" onClick={() => requestSort('change_pct')}>
                                         % Thay đổi <SortIcon columnKey="change_pct" />
                                     </th>
-                                    <th className="p-4 text-center cursor-pointer hover:bg-emerald-100 transition-colors" onClick={() => requestSort('trending')}>
-                                        <div>Xu hướng <SortIcon columnKey="trending" /></div>
-                                        <div className="text-[10px] text-slate-800 font-normal">(5 phiên)</div>
+                                    <th className="p-4 text-center cursor-pointer bg-amber-100/60 hover:bg-amber-100/80 transition-colors" onClick={() => requestSort('trending')}>
+                                        <div className="text-sm font-medium">Xu hướng <SortIcon columnKey="trending" /></div>
+                                        <div className="text-[9px] text-slate-800 font-normal">(5 phiên)</div>
                                     </th>
                                     <th className="p-4 text-right cursor-pointer hover:bg-emerald-100 transition-colors" onClick={() => requestSort('pb')}>
                                         P/B <SortIcon columnKey="pb" />
@@ -458,9 +458,9 @@ export default function WatchlistPro() {
                                     <WatchlistRow
                                         key={item.ticker}
                                         item={item}
-                                        onRemove={handleRemoveTicker}
                                         isSelected={selectedTickers.includes(item.ticker)}
                                         onToggle={() => handleToggleSelect(item.ticker)}
+                                        onRemove={handleRemoveTicker}
                                     />
                                 ))}
                             </tbody>

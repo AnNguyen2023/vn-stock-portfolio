@@ -206,11 +206,17 @@ def sync_historical_task(ticker: str, period: str) -> None:
                     d = datetime.strptime(item["date"], "%Y-%m-%d").date()
                     exist = db.query(models.HistoricalPrice).filter_by(ticker=ticker, date=d).first()
                     if not exist:
+                        # CRITICAL: Normalize price - multiply by 1000 if < 1000 (VND unit issue)
+                        close_price = Decimal(str(item["close"]))
+                        if close_price < 1000:
+                            close_price = close_price * 1000
+                            logger.warning(f"[{ticker}] Normalized price {item['close']} -> {close_price} on {d}")
+                        
                         db.add(
                             models.HistoricalPrice(
                                 ticker=ticker,
                                 date=d,
-                                close_price=Decimal(str(item["close"])),
+                                close_price=close_price,
                                 volume=Decimal(str(item.get("volume", 0))),
                                 value=Decimal(str(item.get("value", 0))),
                             )
@@ -456,25 +462,23 @@ def _process_market_row(row: Any, index_name: str, db: Session, vps_data: dict =
 
         # Safe extraction from row (VCI board)
         match_price = 0
-        ref_price = 0
+        ref_price_api = 0  # From API (may be incorrect)
         match_vol = 0
         total_val = 0
         
         if hasattr(row, 'get'):
             match_price = row.get(('match', 'match_price')) or 0
-            ref_price = row.get(('match', 'reference_price')) or 0
+            ref_price_api = row.get(('match', 'reference_price')) or 0
             match_vol = row.get(('match', 'match_vol')) or row.get(('match', 'accumulated_volume')) or 0
             total_val = row.get(('match', 'total_value')) or row.get(('match', 'total_val')) or 0
         
-        price = float(match_price or ref_price or 0)
-        ref = float(ref_price or 0)
+        price = float(match_price or ref_price_api or 0)
         volume = float(match_vol or 0)
-        # VCI VND -> Billions (Assume Thousands of VND if it's too small)
         value = float(total_val) / 1e9 
-        if 0 < value < 100: # Heuristic: if it's suspiciously small (e.g. 41B), it might be missing Thousands multiplier
-            value *= 1000 # 41B -> 41,000B
+        if 0 < value < 100:
+            value *= 1000
 
-        # VPS Data Priority
+        # VPS Data Priority for current price
         has_vps = False
         if vps_data and index_name in vps_data:
             has_vps = True
@@ -482,24 +486,42 @@ def _process_market_row(row: Any, index_name: str, db: Session, vps_data: dict =
             v_price = v_data.get("price", 0)
             if v_price > 0: price = v_price
             
-            v_ref = v_data.get("ref", 0)
-            if v_ref > 0: ref = v_ref
-            
             v_vol = v_data.get("volume", 0)
             if v_vol > 0: volume = v_vol
             
             v_val = v_data.get("value", 0)
             if v_val > 0: 
-                # Smart scaling: VPS can return Millions (e.g. 40,000,000) or Billions (e.g. 40,000)
-                # Goal: Billion VND (Tỷ). If > 1M, it's definitely Millions or raw VND.
-                if v_val > 500000: # Heuristic for Millions VND (Min liq for VNINDEX is ~5k Tỷ)
+                if v_val > 500000:
                     value = v_val / 1000
                 else:
                     value = v_val
         
-        # Unify to points if price is raw (e.g. 1,000,000)
+        # Unify to points if price is raw
         if price > 5000:
             price /= 1000
+
+        # CRITICAL: Get reference price from DATABASE (previous session's close)
+        # This is the ONLY reliable source for the previous day's closing price
+        ref_price_db = 0
+        try:
+            from datetime import date
+            today = date.today()
+            prev_close = db.query(models.HistoricalPrice).filter(
+                models.HistoricalPrice.ticker == index_name,
+                models.HistoricalPrice.date < today
+            ).order_by(models.HistoricalPrice.date.desc()).first()
+            
+            if prev_close:
+                ref_price_db = float(prev_close.close_price)
+                if ref_price_db > 5000:
+                    ref_price_db /= 1000
+                logger.info(f"[{index_name}] Using DB ref_price: {ref_price_db:.2f} from {prev_close.date}")
+        except Exception as e:
+            logger.error(f"Failed to fetch ref_price from DB for {index_name}: {e}")
+        
+        # Use DB ref_price if available, otherwise fallback to API (unreliable)
+        ref = ref_price_db if ref_price_db > 0 else float(ref_price_api or 0)
+        if ref > 5000:
             ref /= 1000
 
         if price <= 0 or ref <= 0:
@@ -512,13 +534,14 @@ def _process_market_row(row: Any, index_name: str, db: Session, vps_data: dict =
             ).order_by(models.HistoricalPrice.date.desc()).first()
             if latest_hist:
                 if latest_hist.value > 0:
-                    # Historical value is usually in VND, convert to Billions
                     value = float(latest_hist.value) / (1e9 if latest_hist.value > 1e6 else 1)
                 if volume <= 0:
                     volume = int(latest_hist.volume or 0)
         
         change = price - ref
         change_pct = (change / ref * 100) if ref > 0 else 0
+        
+        logger.info(f"[{index_name}] price={price:.2f}, ref={ref:.2f}, change={change:.2f}, has_vps={has_vps}")
         
         from adapters.vci_adapter import get_intraday_sparkline
         sparkline = []
@@ -560,6 +583,7 @@ def _process_market_row(row: Any, index_name: str, db: Session, vps_data: dict =
             "index": index_name,
             "last_updated": datetime.now().isoformat(),
             "price": round(price, 2),
+            "ref_price": round(ref, 2),
             "change": round(change, 2),
             "change_pct": round(change_pct, 2),
             "volume": int(volume),
@@ -585,32 +609,46 @@ def _get_market_fallback(db: Session, indices: list[str]) -> list[dict]:
             latest = db.query(models.HistoricalPrice).filter(
                 models.HistoricalPrice.ticker == index_name
             ).order_by(models.HistoricalPrice.date.desc()).first()
-        
+
         if not latest:
             continue
 
-        # Get previous record for change calculation (from the same table)
-        table = models.TestHistoricalPrice if isinstance(latest, models.TestHistoricalPrice) else models.HistoricalPrice
-        prev = db.query(table).filter(
-            table.ticker == index_name, 
-            table.date < latest.date
-        ).order_by(table.date.desc()).first()
-        
-        price = float(latest.close_price)
-        ref = float(prev.close_price) if prev else price
-        
+        price = float(latest.close_price or 0)
         if price > 5000:
             price /= 1000
-            ref /= 1000
-            
+
+        # Get reference price from PREVIOUS session (not current)
+        from datetime import date
+        today = date.today()
+        prev_close = db.query(models.HistoricalPrice).filter(
+            models.HistoricalPrice.ticker == index_name,
+            models.HistoricalPrice.date < latest.date
+        ).order_by(models.HistoricalPrice.date.desc()).first()
+
+        ref = 0
+        if prev_close:
+            ref = float(prev_close.close_price)
+            if ref > 5000:
+                ref /= 1000
+
+        if ref <= 0:
+            # Ultimate fallback: use a small offset from current price
+            ref = price * 0.99
+
         change = price - ref
         change_pct = (change / ref * 100) if ref > 0 else 0
-        
-        sparkline = get_intraday_sparkline(index_name, mem_get, mem_set)
-        
+
+        sparkline = []
+        try:
+            # from adapters.vci_adapter import get_intraday_sparkline # Already imported at function level
+            sparkline = get_intraday_sparkline(index_name, mem_get, mem_set)
+        except Exception as se:
+            logger.warning(f"Sparkline fetch failed for {index_name}: {se}")
+
         fallback_results.append({
             "index": index_name,
             "price": round(price, 2),
+            "ref_price": round(ref, 2),
             "change": round(change, 2),
             "change_pct": round(change_pct, 2),
             "volume": int(latest.volume or 0),
