@@ -60,6 +60,13 @@ class DataEngine:
         Check for missing days since last sync and perform "Self-Healing".
         """
         with SessionLocal() as db:
+            # Process any due dividends on startup
+            try:
+                from services.trading_service import process_pending_dividends
+                process_pending_dividends(db)
+            except Exception as e:
+                logger.error(f"[DataEngine] Error processing pending dividends: {e}")
+
             last_sync_str = cls.get_setting(db, "last_sync_date")
             today = date.today()
             
@@ -250,6 +257,14 @@ class DataEngine:
         today = date.today()
         logger.info(f"--- [DataEngine] Running End-of-Day chot so for {today}")
         
+        with SessionLocal() as db:
+            # 0. Process any due dividends
+            try:
+                from services.trading_service import process_pending_dividends
+                process_pending_dividends(db)
+            except Exception as e:
+                logger.error(f"[DataEngine] Error processing pending dividends in EOD: {e}")
+
         # 1. Sync prices
         cls.sync_historical_data(today, today)
         

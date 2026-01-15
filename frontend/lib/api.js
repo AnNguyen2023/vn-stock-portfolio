@@ -3,7 +3,8 @@ import axios from 'axios';
 import { toast } from 'sonner';
 
 // 1. Cấu hình địa chỉ Backend
-const API_URL = 'http://localhost:8000';
+export const API_BASE_URL = 'http://localhost:8000';
+const API_URL = API_BASE_URL;
 
 // 2. Cấu hình Interceptor (Người gác cổng)
 axios.interceptors.response.use(
@@ -84,6 +85,11 @@ export const buyStock = async (data) => {
 // Khớp lệnh bán cổ phiếu
 export const sellStock = async (data) => {
     return axios.post(`${API_URL}/sell`, data);
+};
+
+// Đăng ký cổ tức (Tiền, Cổ phiếu, Quyền mua)
+export const registerDividend = async (data) => {
+    return axios.post(`${API_URL}/register-dividend`, data);
 };
 
 export const updateTransactionNote = (id, note) => axios.put(`${API_URL}/logs/${id}/note`, { note });

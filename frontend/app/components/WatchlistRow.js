@@ -1,5 +1,5 @@
 "use client";
-import { TrendingUp, TrendingDown, Minus } from "lucide-react";
+import { TrendingUp, TrendingDown, Minus, Banknote } from "lucide-react";
 import TrendingIcon from "./TrendingIcon";
 import { useFlashAnimation } from "../hooks/useFlashAnimation";
 import { getStockTheme } from "../utils/stockTheme";
@@ -99,7 +99,25 @@ export default function WatchlistRow({ item, onRemove, isSelected, onToggle }) {
             <td className="p-3 relative">
                 <div className={`absolute left-0 top-3 bottom-3 w-1.5 rounded-r-full ${theme.bg}`}></div>
                 <div className="flex flex-col items-center">
-                    <div className={`font-medium text-[15px] ${theme.text}`}>{item.ticker}</div>
+                    <div className="flex items-center gap-1">
+                        <div className={`font-medium text-[15px] ${theme.text}`}>{item.ticker}</div>
+                        {item.has_dividend && (
+                            <div className="relative group/dividend cursor-help animate-pulse hover:animate-none">
+                                <Banknote size={12} className="text-orange-500 fill-orange-50" />
+                                <div className="absolute bottom-full left-1/2 -translate-x-1/2 mb-2 px-3 py-1.5 bg-purple-600 text-white text-[10px] rounded-md opacity-0 group-hover/dividend:opacity-100 transition-opacity whitespace-nowrap pointer-events-none z-50 shadow-lg uppercase tracking-wider text-center">
+                                    <div className="font-bold">Cổ tức chờ về</div>
+                                    {item.dividend_data && (
+                                        <div className="text-[9px] opacity-90 mt-0.5 normal-case font-medium">
+                                            {item.dividend_data.type === 'DIVIDEND_CASH' ? 'Ngày nhận tiền: ' :
+                                                item.dividend_data.type === 'DIVIDEND_STOCK' ? 'Ngày nhận cổ phiếu: ' : 'Ngày thực hiện: '}
+                                            {new Date(item.dividend_data.payment_date).toLocaleDateString('vi-VN')}
+                                        </div>
+                                    )}
+                                    <div className="absolute top-full left-1/2 -translate-x-1/2 border-4 border-transparent border-t-purple-600"></div>
+                                </div>
+                            </div>
+                        )}
+                    </div>
                     <div className="text-[10px] text-slate-400 font-medium truncate max-w-[100px]">{item.organ_name}</div>
                 </div>
             </td>

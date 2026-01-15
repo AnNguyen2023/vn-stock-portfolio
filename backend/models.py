@@ -22,6 +22,13 @@ class CashFlowType(enum.Enum):
     CUSTODY_FEE = "CUSTODY_FEE"
     INTEREST = "INTEREST"
     DIVIDEND_CASH = "DIVIDEND_CASH"
+    DIVIDEND_STOCK = "DIVIDEND_STOCK"
+    RIGHTS_ISSUE = "RIGHTS_ISSUE"
+
+
+class CashFlowStatus(enum.Enum):
+    PENDING = "PENDING"
+    COMPLETED = "COMPLETED"
 
 
 class AssetSummary(Base):
@@ -75,13 +82,34 @@ class RealizedProfit(Base):
 
 
 class CashFlow(Base):
-    """Nhật ký dòng tiền nạp/rút/lãi"""
+    """Nhật ký dòng tiền nạp/rút/lãi/cổ tức"""
     __tablename__ = "cash_flow"
     id = Column(Integer, primary_key=True, index=True)
     type = Column(Enum(CashFlowType))
     amount = Column(Numeric(20, 4))
     description = Column(String(255))
+    status = Column(Enum(CashFlowStatus), default=CashFlowStatus.COMPLETED)
+    execution_date = Column(Date, default=date.today)  # Ngày thực tế tiền về/đi
     created_at = Column(DateTime, default=datetime.now, index=True)
+
+
+class DividendRecord(Base):
+    """Ghi nhận thông tin cổ tức/quyền mua"""
+    __tablename__ = "dividend_records"
+    id = Column(Integer, primary_key=True, index=True)
+    ticker = Column(String(10), index=True)
+    type = Column(Enum(CashFlowType))  # DIVIDEND_CASH, DIVIDEND_STOCK, RIGHTS_ISSUE
+    ratio = Column(String(20), nullable=True)  # vd 100:15
+    amount_per_share = Column(Numeric(20, 4), nullable=True) # Cho cổ tức tiền
+    ex_dividend_date = Column(Date) # Ngày GDKHQ
+    register_date = Column(Date, nullable=True) # Ngày đăng ký mua (cho Quyền mua)
+    payment_date = Column(Date)     # Ngày nhận tiền/CP
+    owned_volume = Column(Numeric(20, 4)) # Số lượng CP tại ngày chốt
+    expected_value = Column(Numeric(20, 4)) # Số tiền hoặc số CP dự kiến nhận
+    purchase_price = Column(Numeric(20, 4), nullable=True) # Giá ưu đãi cho Quyền mua
+    rights_quantity = Column(Numeric(20, 4), nullable=True) # SL CP được mua ưu đãi
+    status = Column(Enum(CashFlowStatus), default=CashFlowStatus.PENDING)
+    created_at = Column(DateTime, default=datetime.now)
 
 
 class DailySnapshot(Base):

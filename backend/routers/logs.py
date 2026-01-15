@@ -24,11 +24,13 @@ def get_audit_log(db: Session = Depends(get_db)):
     
     # 2. Normalize CashFlow entries
     for c in cash:
+        status_suffix = " (Chờ về)" if c.status == models.CashFlowStatus.PENDING else ""
         logs.append({
             "date": c.created_at.isoformat(),
             "type": c.type.value,
-            "content": f"{c.description}: {int(c.amount):,} VND",
-            "category": "CASH"
+            "content": f"{c.description}: {int(c.amount):,} VND{status_suffix}",
+            "category": "CASH",
+            "status": c.status.value
         })
     
     # 3. Normalize StockTransaction entries

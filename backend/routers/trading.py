@@ -52,3 +52,42 @@ def undo_last_buy(db: Session = Depends(get_db)):
         "message": f"Reverted buy order for {data['ticker']}.",
         "data": data
     }
+@router.post("/register-dividend")
+def register_dividend(req: schemas.RegisterDividendRequest, db: Session = Depends(get_db)):
+    """
+    Registers a dividend event and handles cash logic (PENDING flow).
+    """
+    data = trading_service.register_dividend(db, req)
+    return {
+        "success": True,
+        "message": f"Đã đăng ký cổ tức {req.type.value} cho {req.ticker}",
+        "data": data
+    }
+
+@router.get("/dividends/pending")
+def get_pending_dividends(db: Session = Depends(get_db)):
+    """Fetches all pending dividend records."""
+    return trading_service.get_pending_dividends(db)
+
+@router.delete("/dividends/{dividend_id}")
+def delete_dividend(dividend_id: int, db: Session = Depends(get_db)):
+    """Deletes a pending dividend record."""
+    success = trading_service.delete_dividend(db, dividend_id)
+    if not success:
+        return {"success": False, "message": "Dividend not found or already processed"}
+    return {"success": True, "message": "Dividend deleted successfully"}
+
+@router.put("/dividends/{dividend_id}")
+def update_dividend(dividend_id: int, req: schemas.UpdateDividendRequest, db: Session = Depends(get_db)):
+    """Updates a pending dividend record."""
+    data = trading_service.update_dividend(db, dividend_id, req)
+    if not data:
+        return {"success": False, "message": "Dividend not found or already processed"}
+    return {
+        "success": True,
+        "message": f"Updated dividend for {req.ticker}",
+        "data": {
+            "expected_value": data["expected_value"],
+            "expected_growth": data.get("type", "")
+        }
+    }

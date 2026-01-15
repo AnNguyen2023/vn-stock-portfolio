@@ -1,16 +1,20 @@
 "use client";
 import React, { useState, useMemo, useEffect, useRef } from 'react';
-import { List, TrendingUp, TrendingDown, Minus, PlusCircle, MinusCircle, ChevronDown, ArrowUpDown } from 'lucide-react';
+import { List, TrendingUp, TrendingDown, Minus, PlusCircle, MinusCircle, ChevronDown, ArrowUpDown, Banknote } from 'lucide-react';
 import StatusBadge from '../components/StatusBadge';
 import StockTrendingCell from '../components/StockTrendingCell';
 import StockTableRow from '../components/StockTableRow';
+import DividendPopover from '../components/DividendPopover';
 
-export default function StockTable({ data, buyForm, setBuyForm, setSellForm, setShowBuy, setShowSell, navHistory }) {
+export default function StockTable({ data, buyForm, setBuyForm, setSellForm, setShowBuy, setShowSell, setShowDividend, onEditDividend, navHistory }) {
   const [sortConfig, setSortConfig] = useState({ key: null, direction: 'asc' });
   const [isExpanded, setIsExpanded] = useState(false);
   const collapseTimeoutRef = useRef(null);
 
   // Auto-collapse after 10 minutes (600000ms)
+  const [showDividendPopover, setShowDividendPopover] = useState(false);
+  const dividendTimeoutRef = useRef(null);
+
   useEffect(() => {
     if (isExpanded) {
       // Clear any existing timeout
@@ -101,6 +105,25 @@ export default function StockTable({ data, buyForm, setBuyForm, setSellForm, set
           >
             <MinusCircle size={16} /> Bán
           </button>
+          <div
+            className="relative"
+            onMouseEnter={() => setShowDividendPopover(true)}
+            onMouseLeave={() => setShowDividendPopover(false)}
+          >
+            <button
+              onClick={() => setShowDividend(true)}
+              className="bg-orange-500 text-white px-4 py-2 rounded-xl font-bold flex items-center gap-2 hover:bg-orange-600 shadow-md shadow-orange-100 active:scale-95 transition-all text-sm"
+            >
+              <Banknote size={16} /> Cổ tức
+            </button>
+
+            {showDividendPopover && (
+              <div className="absolute top-full right-0 mt-2 z-50">
+                <div className="bg-transparent h-2 w-full absolute -top-2" /> {/* Bridge to prevent closing on gap hover */}
+                <DividendPopover onEdit={onEditDividend} />
+              </div>
+            )}
+          </div>
           {/* Toggle Button */}
           <button
             onClick={() => setIsExpanded(!isExpanded)}
@@ -171,17 +194,17 @@ export default function StockTable({ data, buyForm, setBuyForm, setSellForm, set
             </tbody>
             <tfoot className="bg-white border-t border-slate-300">
               <tr>
-                <td colSpan={5} className="p-5 pl-6 text-slate-700 text-[20px] font-medium tracking-wide">Tổng giá trị danh mục</td>
-                <td className="p-5 text-right">
+                <td colSpan={7} className="p-5 pl-6 text-slate-700 text-[20px] font-medium tracking-wide">Tổng giá trị danh mục</td>
+                <td className="p-5 text-center">
                   {navHistory?.summary?.total_performance_pct !== undefined && (
-                    <span className={`text-base font-medium ${navHistory.summary.total_performance_pct >= 0 ? 'text-emerald-600' : 'text-rose-600'}`}>
+                    <span className={`text-[22px] font-medium ${navHistory.summary.total_performance_pct >= 0 ? 'text-emerald-600' : 'text-rose-600'}`}>
                       {navHistory.summary.total_performance_pct >= 0 ? '+' : ''}{navHistory.summary.total_performance_pct.toFixed(2)}%
                     </span>
                   )}
                 </td>
-                <td colSpan={3} className="p-5 pr-6 text-right">
+                <td colSpan={2} className="p-5 pr-6 text-right">
                   <div className="flex items-baseline justify-end gap-1.5">
-                    <span className="text-xl font-bold text-slate-900 tracking-tight">{Math.floor(data?.total_stock_value || 0).toLocaleString('en-US')}</span>
+                    <span className="text-[26px] font-bold text-slate-900 tracking-tight">{Math.floor(data?.total_stock_value || 0).toLocaleString('en-US')}</span>
                     <span className="text-base font-semibold text-slate-500 lowercase">vnd</span>
                   </div>
                 </td>

@@ -1,4 +1,4 @@
-from datetime import datetime
+from datetime import datetime, date
 from decimal import Decimal
 from typing import Optional, Generic, TypeVar, Any, List
 from pydantic import BaseModel, Field, field_validator
@@ -60,6 +60,35 @@ class WatchlistSchema(BaseModel):
     created_at: datetime
     class Config:
         from_attributes = True
+
+from enum import Enum
+
+class DividendType(str, Enum):
+    CASH = "cash"
+    STOCK = "stock"
+    RIGHTS = "rights"
+
+class RegisterDividendRequest(BaseModel):
+    ticker: str = Field(..., min_length=3, max_length=10)
+    type: DividendType
+    ratio: Optional[str] = None # vd 100:15
+    amount_per_share: Optional[Decimal] = None # vd 500
+    ex_dividend_date: date
+    register_date: Optional[date] = None
+    payment_date: date
+    owned_quantity: int = Field(..., gt=0)
+    purchase_price: Optional[Decimal] = None
+    rights_quantity: Optional[int] = None
+
+    @field_validator('ticker')
+    @classmethod
+    def ticker_must_be_alphanumeric(cls, v: str) -> str:
+        if not v.isalnum():
+            raise ValueError('Mã chứng khoán chỉ được chứa chữ cái và số')
+        return v.upper()
+
+class UpdateDividendRequest(RegisterDividendRequest):
+    pass
 
 class SellStockRequest(BaseModel):
     ticker: str = Field(..., min_length=3, max_length=10)

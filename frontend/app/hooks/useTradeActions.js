@@ -10,6 +10,7 @@ export default function useTradeActions(fetchAllData) {
     const [showBuy, setShowBuy] = useState(false);
     const [showSell, setShowSell] = useState(false);
     const [showUndoConfirm, setShowUndoConfirm] = useState(false);
+    const [showDividend, setShowDividend] = useState(false);
 
     // Note Modal
     const [editingNote, setEditingNote] = useState({ id: null, content: "" });
@@ -41,6 +42,7 @@ export default function useTradeActions(fetchAllData) {
         setShowWithdraw(false);
         setShowBuy(false);
         setShowSell(false);
+        setShowDividend(false);
 
         setAmount("");
         setDescription("");
@@ -185,6 +187,7 @@ export default function useTradeActions(fetchAllData) {
     return {
         showDeposit, setShowDeposit, showWithdraw, setShowWithdraw,
         showBuy, setShowBuy, showSell, setShowSell, showUndoConfirm, setShowUndoConfirm,
+        showDividend, setShowDividend,
         amount, setAmount, description, setDescription,
         buyForm, setBuyForm, sellForm, setSellForm,
         editingNote, setEditingNote, showNoteModal, setShowNoteModal,

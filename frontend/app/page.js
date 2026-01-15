@@ -2,7 +2,7 @@
 
 import React, { useEffect, useState } from "react";
 import dynamic from "next/dynamic";
-import { RefreshCw, Wallet, TrendingUp, PieChart as PieChartIcon } from "lucide-react";
+import { RefreshCw, Wallet, TrendingUp, PieChart as PieChartIcon, AlertCircle } from "lucide-react";
 import { Toaster, toast } from "sonner";
 
 import SummaryCard from "./components/SummaryCard";
@@ -12,6 +12,7 @@ import CashModal from "./modals/CashModal";
 import TradeModal from "./modals/TradeModal";
 import UndoModal from "./modals/UndoModal";
 import NoteModal from "./modals/NoteModal";
+import DividendModal from "./modals/DividendModal";
 
 import Header from "./sections/Header";
 import StockTable from "./sections/StockTable";
@@ -111,6 +112,7 @@ export default function Dashboard() {
   const {
     showDeposit, setShowDeposit, showWithdraw, setShowWithdraw,
     showBuy, setShowBuy, showSell, setShowSell, showUndoConfirm, setShowUndoConfirm,
+    showDividend, setShowDividend,
     amount, setAmount, description, setDescription,
     buyForm, setBuyForm, sellForm, setSellForm,
     editingNote, setEditingNote, showNoteModal, setShowNoteModal,
@@ -126,6 +128,7 @@ export default function Dashboard() {
   const [isDropdownOpen, setIsDropdownOpen] = useState(false);
   const [chartRange, setChartRange] = useState("1m");
   const [selectedComparisons, setSelectedComparisons] = useState(["PORTFOLIO", "VNINDEX"]);
+  const [editingDividend, setEditingDividend] = useState(null);
 
   // Auto privacy
   useEffect(() => {
@@ -212,7 +215,7 @@ export default function Dashboard() {
         <Header
           {...{
             isPrivate, setIsPrivate, setShowDeposit, setShowWithdraw, setShowBuy, setShowSell,
-            fetchAllData, handleUndo
+            fetchAllData, handleUndo, showDividend, setShowDividend
           }}
         />
 
@@ -222,6 +225,31 @@ export default function Dashboard() {
           <SummaryCard isPrivate={isPrivate} title="Tiền mặt" value={Math.floor(data?.cash_balance || 0)} icon={<Wallet size={26} />} color="text-emerald-600" bg="bg-emerald-50" />
           <SummaryCard isPrivate={isPrivate} title="Giá trị cổ phiếu" value={Math.floor(data?.total_stock_value || 0)} icon={<TrendingUp size={26} />} color="text-fuchsia-600" bg="bg-fuchsia-50" />
         </div>
+
+        {/* ALERTS */}
+        {data?.alerts?.length > 0 && (
+          <div className="space-y-3 mb-6">
+            {data.alerts.map((alert, idx) => (
+              <div key={idx} className="bg-rose-50 border border-rose-100 p-4 rounded-2xl flex items-center justify-between animate-pulse">
+                <div className="flex items-center gap-3">
+                  <div className="p-2 bg-rose-500 rounded-xl text-white">
+                    <AlertCircle size={20} />
+                  </div>
+                  <div>
+                    <p className="text-rose-900 font-bold text-sm uppercase tracking-tight">{alert.message}</p>
+                    <p className="text-rose-600/70 text-xs font-semibold uppercase italic">Hạn chốt đăng ký: {new Date(alert.date).toLocaleDateString('vi-VN')}</p>
+                  </div>
+                </div>
+                <button
+                  onClick={() => setShowDeposit(true)}
+                  className="px-4 py-2 bg-rose-500 text-white text-xs font-bold rounded-xl hover:bg-rose-600 transition-colors uppercase"
+                >
+                  Nạp tiền ngay
+                </button>
+              </div>
+            ))}
+          </div>
+        )}
 
         {/* Market Summary */}
         <div className="mb-6"><MarketSummary /></div>
@@ -250,16 +278,32 @@ export default function Dashboard() {
         </div>
 
         {/* TABLE */}
-        <StockTable {...{ data, buyForm, setBuyForm, sellForm, setSellForm, setShowBuy, setShowSell, lastUpdated: portfolioLastUpdated, navHistory }} />
+        <StockTable
+          {...{ data, buyForm, setBuyForm, sellForm, setSellForm, setShowBuy, setShowSell, setShowDividend, lastUpdated: portfolioLastUpdated, navHistory }}
+          onEditDividend={(div) => {
+            setEditingDividend(div);
+            setShowDividend(true);
+          }}
+        />
 
         {/* HISTORY */}
         <HistoryTabs {...{ activeHistoryTab, setActiveHistoryTab, startDate, setStartDate, endDate, setEndDate, handleCalculateProfit, data, PIE_COLORS, historicalProfit, navHistory, logs, setEditingNote, setShowNoteModal }} />
 
         {/* MODALS */}
-        <CashModal {...{ showDeposit, showWithdraw, amount, setAmount, description, setDescription, handleAmountChange, handleDeposit, handleWithdraw, closeModals, availableBalance: data?.cash_balance || 0 }} />
+        <CashModal {...{ showDeposit, setShowDeposit, showWithdraw, setShowWithdraw, amount, setAmount, description, setDescription, handleAmountChange, handleDeposit, handleWithdraw, closeModals }} />
         <TradeModal {...{ showBuy, showSell, buyForm, setBuyForm, sellForm, setSellForm, handleBuy, handleSell, handleVolumeChange, handlePriceChange, handlePriceBlur, closeModals, data }} />
         <UndoModal {...{ showUndoConfirm, setShowUndoConfirm, confirmUndo }} />
         <NoteModal {...{ showNoteModal, setShowNoteModal, editingNote, setEditingNote, handleUpdateNote }} />
+        <DividendModal
+          isOpen={showDividend}
+          onClose={() => {
+            setShowDividend(false);
+            setEditingDividend(null);
+          }}
+          holdings={data?.holdings || []}
+          cashBalance={data?.cash_balance || 0}
+          initialData={editingDividend}
+        />
 
         <Toaster position="top-center" richColors expand={true} closeButton theme="light" />
         <ScrollToTop />

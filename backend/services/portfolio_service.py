@@ -1,4 +1,4 @@
-from datetime import date
+from datetime import date, timedelta
 from decimal import Decimal
 from typing import Any, Dict, Optional, Tuple
 
@@ -88,7 +88,14 @@ def calculate_portfolio(db: Session) -> Dict[str, Any]:
     # 1. Update interest
     _lazy_interest(asset, db)
 
-    # 2. Process active holdings
+    # 2. Process pending dividends
+    try:
+        from services.trading_service import process_pending_dividends
+        process_pending_dividends(db)
+    except Exception as e:
+        logger.error(f"Failed to process pending dividends: {e}")
+
+    # 3. Process active holdings
     holdings = (
         db.query(models.TickerHolding)
         .filter(models.TickerHolding.total_volume > 0)
@@ -123,6 +130,19 @@ def calculate_portfolio(db: Session) -> Dict[str, Any]:
         from services.market_service import get_trending_indicator
         trending = get_trending_indicator(h.ticker, db)
 
+        # Check for PENDING dividends
+        div_rec = db.query(models.DividendRecord).filter(
+            models.DividendRecord.ticker == h.ticker,
+            models.DividendRecord.status == models.CashFlowStatus.PENDING
+        ).order_by(models.DividendRecord.payment_date.asc()).first()
+        
+        dividend_data = None
+        if div_rec:
+            dividend_data = {
+                "type": div_rec.type.value,
+                "payment_date": div_rec.payment_date.strftime("%Y-%m-%d") if div_rec.payment_date else None
+            }
+
         items.append(
             {
                 "ticker": h.ticker,
@@ -138,6 +158,8 @@ def calculate_portfolio(db: Session) -> Dict[str, Any]:
                 "profit_percent": float(profit_pct),
                 "current_value": float(curr_val),
                 "trending": trending,
+                "has_dividend": div_rec is not None,
+                "dividend_data": dividend_data,
             }
         )
 
@@ -146,7 +168,29 @@ def calculate_portfolio(db: Session) -> Dict[str, Any]:
         "total_stock_value": float(total_stock_value),
         "total_nav": float(_d(asset.cash_balance) + total_stock_value),
         "holdings": items,
+        "alerts": []
     }
+
+    # 4. Check for approaching Rights Registration
+    try:
+        approaching_rights = db.query(models.DividendRecord).filter(
+            models.DividendRecord.type == models.CashFlowType.RIGHTS_ISSUE,
+            models.DividendRecord.status == models.CashFlowStatus.PENDING,
+            models.DividendRecord.register_date <= date.today() + timedelta(days=5)
+        ).all()
+        
+        today = date.today()
+        for r in approaching_rights:
+            cost = r.expected_value * (r.purchase_price or Decimal("0"))
+            if _d(asset.cash_balance) < cost:
+                result["alerts"].append({
+                    "type": "REGISTRATION_WARNING",
+                    "ticker": r.ticker,
+                    "message": f"Cần nạp tiền để đảm bảo quyền mua {r.ticker} ({int(r.expected_value):,} CP)",
+                    "date": r.register_date.strftime("%Y-%m-%d")
+                })
+    except Exception as e:
+        logger.error(f"Error checking rights alerts: {e}")
 
     return result
 

@@ -71,6 +71,19 @@ def _process_single_ticker(t: str, p_info: dict, sec_info: dict | None = None) -
         # Background tasks will be triggered by individual /trending calls OR we rely on pre-synced data
         with SessionLocal() as db:
             trending = get_trending_indicator(t, db)
+            
+            # 6. Check for PENDING dividends
+            div_rec = db.query(models.DividendRecord).filter(
+                models.DividendRecord.ticker == t,
+                models.DividendRecord.status == models.CashFlowStatus.PENDING
+            ).order_by(models.DividendRecord.payment_date.asc()).first()
+
+            dividend_data = None
+            if div_rec:
+                dividend_data = {
+                    "type": div_rec.type.value,
+                    "payment_date": div_rec.payment_date.strftime("%Y-%m-%d") if div_rec.payment_date else None
+                }
 
         return {
             "ticker": t,
@@ -88,7 +101,9 @@ def _process_single_ticker(t: str, p_info: dict, sec_info: dict | None = None) -
             "pb": ratios.get("pb", 0),
             "sparkline": sparkline,
             "industry": exchange,
-            "trending": trending
+            "trending": trending,
+            "has_dividend": div_rec is not None,
+            "dividend_data": dividend_data
         }
 
     except Exception as e:
@@ -615,15 +630,19 @@ def _get_market_fallback(db: Session, indices: list[str]) -> list[dict]:
         if pd.isna(index_name):
             continue
 
-        latest = db.query(models.TestHistoricalPrice).filter(
-            models.TestHistoricalPrice.ticker == index_name
-        ).order_by(models.TestHistoricalPrice.date.desc()).first()
+        # Priority: Use HistoricalPrice FIRST (more reliable for indices)
+        # TestHistoricalPrice is only for testing/simulation
+        latest = db.query(models.HistoricalPrice).filter(
+            models.HistoricalPrice.ticker == index_name
+        ).order_by(models.HistoricalPrice.date.desc()).first()
         
+        use_test_table = False
         if not latest:
-            # Try real historical if test is empty
-            latest = db.query(models.HistoricalPrice).filter(
-                models.HistoricalPrice.ticker == index_name
-            ).order_by(models.HistoricalPrice.date.desc()).first()
+            # Fallback to TestHistoricalPrice if real data unavailable
+            latest = db.query(models.TestHistoricalPrice).filter(
+                models.TestHistoricalPrice.ticker == index_name
+            ).order_by(models.TestHistoricalPrice.date.desc()).first()
+            use_test_table = True
 
         if not latest:
             continue
@@ -632,13 +651,20 @@ def _get_market_fallback(db: Session, indices: list[str]) -> list[dict]:
         if price > 5000:
             price /= 1000
 
-        # Get reference price from PREVIOUS session (not current)
+        # Get reference price from PREVIOUS session - use SAME table as latest
         from datetime import date
         today = date.today()
-        prev_close = db.query(models.HistoricalPrice).filter(
-            models.HistoricalPrice.ticker == index_name,
-            models.HistoricalPrice.date < latest.date
-        ).order_by(models.HistoricalPrice.date.desc()).first()
+        
+        if use_test_table:
+            prev_close = db.query(models.TestHistoricalPrice).filter(
+                models.TestHistoricalPrice.ticker == index_name,
+                models.TestHistoricalPrice.date < latest.date
+            ).order_by(models.TestHistoricalPrice.date.desc()).first()
+        else:
+            prev_close = db.query(models.HistoricalPrice).filter(
+                models.HistoricalPrice.ticker == index_name,
+                models.HistoricalPrice.date < latest.date
+            ).order_by(models.HistoricalPrice.date.desc()).first()
 
         ref = 0
         if prev_close:
@@ -669,12 +695,16 @@ def _get_market_fallback(db: Session, indices: list[str]) -> list[dict]:
         
         # Prepare Fallback Values
         vol_fallback = int(latest.volume or 0)
-        # Convert DB value to Billions (most historical entries are already in Billions if < 10000)
+        # Convert DB value to Billions
+        # - If > 1 billion: raw VND, divide by 1e9
+        # - If > 100,000: likely in millions, divide by 1000
+        # - If < 10,000: already in Tỷ (billions), use as-is
         val_fallback = float(latest.value or 0)
-        if val_fallback > 1000000: # Raw VND
-             val_fallback /= 1e9
-        elif val_fallback > 1000: # Millions (VCI style)
-             val_fallback /= 1000
+        if val_fallback > 1e9:  # Raw VND (e.g., 40,717,000,000,000)
+            val_fallback /= 1e9
+        elif val_fallback > 100000:  # Millions (e.g., 40,717,000)
+            val_fallback /= 1000
+        # else: already in Tỷ (e.g., 1828.044), keep as-is
 
         # ... (final_ref overrides) ...
         # Use DB ref if available, else static baseline
