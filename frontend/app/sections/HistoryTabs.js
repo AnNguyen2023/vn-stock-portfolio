@@ -35,11 +35,14 @@ export default function HistoryTabs({
     <div className="bg-white rounded-2xl shadow-xl border border-slate-400 overflow-hidden relative z-10 mb-6">
 
       {/* 1. HEADER & BỘ LỌC NGÀY */}
-      <div className="p-5 bg-white border-b border-slate-300 flex flex-col md:flex-row justify-between md:items-center gap-4">
+      <div
+        onMouseEnter={() => setIsHistoryExpanded(true)}
+        className="p-5 bg-white border-b border-slate-300 flex flex-col md:flex-row justify-between md:items-center gap-4 cursor-pointer"
+      >
         <div className="flex items-center gap-3">
           <div className="flex items-center gap-2">
             <Book size={20} className="text-slate-600" />
-            <h2 className="text-xl font-bold text-slate-600 uppercase tracking-tight">Nhật Ký Dữ Liệu</h2>
+            <h2 className="text-lg font-bold text-slate-600 uppercase tracking-tight">Nhật Ký Dữ Liệu</h2>
           </div>
         </div>
         <div className="flex flex-wrap gap-3 items-center">

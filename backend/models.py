@@ -90,6 +90,7 @@ class DailySnapshot(Base):
     id = Column(Integer, primary_key=True, index=True)
     date = Column(Date, unique=True)
     total_nav = Column(Numeric(20, 4))
+    created_at = Column(DateTime, default=datetime.now)
 
 
 class HistoricalPrice(Base):

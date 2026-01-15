@@ -3,7 +3,7 @@ import { useEffect } from "react";
 import { Eye, EyeOff, PlusCircle, MinusCircle, RefreshCw, RotateCcw } from 'lucide-react';
 
 export default function Header({
-  isPrivate, setIsPrivate, setShowDeposit, setShowWithdraw, setShowBuy, fetchAllData, handleUndo
+  isPrivate, setIsPrivate, setShowDeposit, setShowWithdraw, setShowBuy, setShowSell, fetchAllData, handleUndo
 }) {
   // Auto-hide private mode after 15 seconds of being visible
   useEffect(() => {
@@ -32,7 +32,8 @@ export default function Header({
       <div className="flex flex-wrap justify-end gap-3 w-full">
         <button onClick={() => setShowDeposit(true)} className="bg-emerald-500 text-white px-5 py-2.5 rounded-xl font-bold flex items-center gap-2 hover:bg-emerald-600 shadow-md shadow-emerald-100 active:scale-95 transition-all"><PlusCircle size={18} /> Nạp tiền</button>
         <button onClick={() => setShowWithdraw(true)} className="bg-purple-500 text-white px-5 py-2.5 rounded-xl font-bold flex items-center gap-2 hover:bg-purple-600 shadow-md shadow-purple-100 active:scale-95 transition-all"><MinusCircle size={18} /> Rút tiền</button>
-        <button onClick={() => setShowBuy(true)} className="bg-rose-400 text-white px-5 py-2.5 rounded-xl font-bold flex items-center gap-2 hover:bg-rose-500 shadow-md shadow-rose-100 active:scale-95 transition-all"><PlusCircle size={18} /> Mua mới</button>
+        <button onClick={() => setShowBuy(true)} className="bg-rose-400 text-white px-5 py-2.5 rounded-xl font-bold flex items-center gap-2 hover:bg-rose-500 shadow-md shadow-rose-100 active:scale-95 transition-all"><PlusCircle size={18} /> Mua</button>
+        <button onClick={() => setShowSell(true)} className="bg-purple-500 text-white px-5 py-2.5 rounded-xl font-bold flex items-center gap-2 hover:bg-purple-600 shadow-md shadow-purple-100 active:scale-95 transition-all"><MinusCircle size={18} /> Bán</button>
         <button onClick={handleUndo} className="flex items-center gap-2 px-4 py-2.5 bg-white border border-rose-100 rounded-xl text-rose-500 hover:bg-rose-50 transition-all shadow-sm active:scale-95"><RotateCcw size={18} /><span className="font-bold text-xs uppercase tracking-wider">Undo Buy</span></button>
       </div>
     </div>

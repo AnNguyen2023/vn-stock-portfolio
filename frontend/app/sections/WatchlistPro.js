@@ -94,10 +94,10 @@ export default function WatchlistPro() {
             setLoading(true);
             fetchDetail();
 
-            // Thiết lập Auto-refresh mỗi 10 giây
+            // Thiết lập Auto-refresh mỗi 5 giây cho giá TT và % thay đổi
             const interval = setInterval(() => {
                 fetchDetail();
-            }, 10000);
+            }, 5000);
 
             return () => clearInterval(interval);
         }
@@ -412,7 +412,7 @@ export default function WatchlistPro() {
                         <table className="w-full text-left border-collapse">
                             <thead className="bg-slate-50/50 text-slate-500 text-[13px] uppercase font-bold tracking-[0.12em] border-b border-slate-100">
                                 <tr>
-                                    <th className="p-4 pl-6 w-10">
+                                    <th className="p-4 pl-6 w-[4%]">
                                         <div
                                             onClick={handleToggleSelectAll}
                                             className={`w-5 h-5 rounded-full border-2 flex items-center justify-center cursor-pointer transition-all ${selectedTickers.length === sortedItems.length && sortedItems.length > 0
@@ -425,32 +425,47 @@ export default function WatchlistPro() {
                                             )}
                                         </div>
                                     </th>
-                                    <th className="p-4 text-left cursor-pointer hover:bg-emerald-100 transition-colors" onClick={() => requestSort('ticker')}>
-                                        Mã CK <SortIcon columnKey="ticker" />
+                                    <th className="p-4 w-[12%] text-left cursor-pointer hover:bg-emerald-100 transition-colors" onClick={() => requestSort('ticker')}>
+                                        <div className="flex items-center justify-start gap-1 whitespace-nowrap">
+                                            MÃ CK <SortIcon columnKey="ticker" />
+                                        </div>
                                     </th>
-                                    <th className="p-4 text-right cursor-pointer hover:bg-emerald-100 transition-colors" onClick={() => requestSort('price')}>
-                                        Giá TT <SortIcon columnKey="price" />
+                                    <th className="p-4 w-[11%] text-right cursor-pointer hover:bg-emerald-100 transition-colors" onClick={() => requestSort('price')}>
+                                        <div className="flex items-center justify-end gap-1">
+                                            GIÁ TT <SortIcon columnKey="price" />
+                                        </div>
                                     </th>
-                                    <th className="p-4 text-right cursor-pointer hover:bg-emerald-100 transition-colors" onClick={() => requestSort('change_pct')}>
-                                        % Thay đổi <SortIcon columnKey="change_pct" />
+                                    <th className="p-4 w-[11%] text-right cursor-pointer hover:bg-emerald-100 transition-colors" onClick={() => requestSort('change_pct')}>
+                                        <div className="flex items-center justify-end gap-1">
+                                            % T.ĐỔI <SortIcon columnKey="change_pct" />
+                                        </div>
                                     </th>
-                                    <th className="p-4 text-center cursor-pointer hover:bg-emerald-100 transition-colors" onClick={() => requestSort('trending')}>
-                                        <div>Xu hướng <SortIcon columnKey="trending" /></div>
-                                        <div className="text-[10px] text-slate-800 font-normal">(5 phiên)</div>
+                                    <th className="p-4 w-[14%] text-center cursor-pointer bg-amber-100/60 hover:bg-amber-100/80 transition-colors whitespace-nowrap" onClick={() => requestSort('trending')}>
+                                        <div className="flex items-center justify-center gap-1 text-[13px] font-bold">
+                                            XU HƯỚNG <SortIcon columnKey="trending" />
+                                        </div>
                                     </th>
-                                    <th className="p-4 text-right cursor-pointer hover:bg-emerald-100 transition-colors" onClick={() => requestSort('pb')}>
-                                        P/B <SortIcon columnKey="pb" />
+                                    <th className="p-4 w-[10%] text-right cursor-pointer hover:bg-emerald-100 transition-colors" onClick={() => requestSort('pb')}>
+                                        <div className="flex items-center justify-end gap-1">
+                                            P/B <SortIcon columnKey="pb" />
+                                        </div>
                                     </th>
-                                    <th className="p-4 text-right cursor-pointer hover:bg-emerald-100 transition-colors" onClick={() => requestSort('roe')}>
-                                        ROE (%) <SortIcon columnKey="roe" />
+                                    <th className="p-4 w-[10%] text-right cursor-pointer hover:bg-emerald-100 transition-colors" onClick={() => requestSort('roe')}>
+                                        <div className="flex items-center justify-end gap-1">
+                                            ROE (%) <SortIcon columnKey="roe" />
+                                        </div>
                                     </th>
-                                    <th className="p-4 text-right cursor-pointer hover:bg-emerald-100 transition-colors" onClick={() => requestSort('roa')}>
-                                        ROA (%) <SortIcon columnKey="roa" />
+                                    <th className="p-4 w-[10%] text-right cursor-pointer hover:bg-emerald-100 transition-colors" onClick={() => requestSort('roa')}>
+                                        <div className="flex items-center justify-end gap-1">
+                                            ROA (%) <SortIcon columnKey="roa" />
+                                        </div>
                                     </th>
-                                    <th className="p-4 text-right cursor-pointer hover:bg-emerald-100 transition-colors" onClick={() => requestSort('pe')}>
-                                        P/E <SortIcon columnKey="pe" />
+                                    <th className="p-4 w-[10%] text-right cursor-pointer hover:bg-emerald-100 transition-colors" onClick={() => requestSort('pe')}>
+                                        <div className="flex items-center justify-end gap-1">
+                                            P/E <SortIcon columnKey="pe" />
+                                        </div>
                                     </th>
-                                    <th className="p-4 w-10"></th>
+                                    <th className="p-4 w-[8%] opacity-0"></th>
                                 </tr>
                             </thead>
                             <tbody>
@@ -458,9 +473,9 @@ export default function WatchlistPro() {
                                     <WatchlistRow
                                         key={item.ticker}
                                         item={item}
-                                        onRemove={handleRemoveTicker}
                                         isSelected={selectedTickers.includes(item.ticker)}
                                         onToggle={() => handleToggleSelect(item.ticker)}
+                                        onRemove={handleRemoveTicker}
                                     />
                                 ))}
                             </tbody>

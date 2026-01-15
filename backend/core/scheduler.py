@@ -2,6 +2,7 @@
 core/scheduler.py
 Background scheduler for periodic tasks
 """
+from datetime import date
 from apscheduler.schedulers.background import BackgroundScheduler
 from apscheduler.triggers.cron import CronTrigger
 from core.logger import logger
@@ -9,6 +10,12 @@ from core.data_engine import DataEngine
 
 
 scheduler = BackgroundScheduler()
+
+
+def sync_today_heartbeat():
+    """Helper to ensure date.today() is evaluated at runtime, not job definition."""
+    today = date.today()
+    DataEngine.sync_historical_data(today, today)
 
 
 def init_scheduler():
@@ -22,6 +29,15 @@ def init_scheduler():
             trigger=CronTrigger(hour=15, minute=5),
             id='eod_sync',
             name='Daily Data Sync and NAV Snapshot',
+            replace_existing=True
+        )
+
+        # 2. Intraday Heartbeat Sync (Every 5 minutes from 9:00 to 15:00, Mon-Fri)
+        scheduler.add_job(
+            func=sync_today_heartbeat,
+            trigger=CronTrigger(minute='*/5', hour='9-14', day_of_week='mon-fri'),
+            id='heartbeat_sync',
+            name='5-Minute Heartbeat Market Sync',
             replace_existing=True
         )
         

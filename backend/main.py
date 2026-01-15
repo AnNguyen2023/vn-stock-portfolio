@@ -23,6 +23,7 @@ from core.exceptions import AppBaseException
 
 from routers import trading, portfolio, logs, market, watchlist, titan
 from tasks.maintenance import cleanup_expired_data_task
+from core.data_engine import DataEngine
 
 app = FastAPI(title="Invest Journal")
 
@@ -98,6 +99,14 @@ def on_startup():
         init_scheduler()
     except Exception as e:
         logger.error(f"Scheduler initialization failed: {e}")
+
+    # --- STARTUP SYNC (Self-Healing) ---
+    # Ensures data for portfolio, watchlists, and indices is synced up to today
+    try:
+        logger.info("--- [Startup] Running DataEngine startup sync...")
+        DataEngine.startup_sync()
+    except Exception as e:
+        logger.error(f"Startup sync failed: {e}")
 
 
 @app.on_event("shutdown")

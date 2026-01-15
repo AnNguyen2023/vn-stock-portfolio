@@ -8,8 +8,10 @@ import {
 
 // Bảng màu 10 sắc thái chuyên nghiệp cho các đường cổ phiếu
 const COLORS = [
-  '#10b981', '#f59e0b', '#ec4899', '#8b5cf6', '#06b6d4',
-  '#f43f5e', '#ea580c', '#84cc16', '#a855f7', '#14b8a6'
+  '#10b981', '#2563eb', '#f59e0b', '#e11d48', '#8b5cf6',
+  '#f97316', '#4f46e5', '#84cc16', '#db2777', '#64748b',
+  '#d946ef', '#059669', '#1d4ed8', '#d97706', '#be123c',
+  '#7c3aed', '#ea580c', '#4338ca', '#65a30d', '#c026d3'
 ];
 
 export default function GrowthChart({
@@ -204,18 +206,38 @@ export default function GrowthChart({
 
                 {/* LOGIC VẼ ĐƯỜNG DỰA TRÊN CHỌN MÃ */}
                 {selectedComparisons.map((ticker) => {
+                  const DASH_PATTERNS = ["0", "10 5", "3 3", "10 4 1 4", "1 4"]; // Solid, Long Dash, Short Dash, Dash-Dot, Dot
+
                   if (ticker === 'PORTFOLIO') {
-                    return <Line key="PORTFOLIO" type="monotone" dataKey="PORTFOLIO" name="Danh mục" stroke="#2563eb" strokeWidth={3} dot={false} activeDot={{ r: 6, strokeWidth: 0, fill: '#2563eb' }} />;
+                    // Danh mục: Nét liền (Solid), Dày nhất (5px), Màu Tím (#9333ea)
+                    return <Line key="PORTFOLIO" type="monotone" dataKey="PORTFOLIO" name="Danh mục" stroke="#9333ea" strokeWidth={5} dot={false} activeDot={{ r: 7, strokeWidth: 0, fill: '#9333ea' }} />;
                   }
                   if (ticker === 'VNINDEX') {
-                    // VN-Index: Đậm hơn (3px), nét liền (solid), màu xám đậm chuyên nghiệp
-                    return <Line key="VNINDEX" type="monotone" dataKey="VNINDEX" name="VN-Index" stroke="#64748b" strokeWidth={3} dot={false} strokeOpacity={0.9} />;
+                    // VN-Index: Nét đứt (Dash 5 5), Độ dày lớn (3.5px), Màu Xám Đậm (#334155)
+                    return <Line key="VNINDEX" type="monotone" dataKey="VNINDEX" name="VN-Index" stroke="#334155" strokeWidth={3.5} strokeDasharray="5 5" dot={false} strokeOpacity={0.9} />;
                   }
+
                   const stockOnlyList = selectedComparisons.filter(t => t !== 'PORTFOLIO' && t !== 'VNINDEX');
                   const colorIdx = stockOnlyList.indexOf(ticker);
                   const color = COLORS[colorIdx % COLORS.length];
-                  // Cổ phiếu lẻ: Nét mỏng hơn (1.5px) để tôn vinh Danh mục & VN-Index
-                  return <Line key={ticker} type="monotone" dataKey={ticker} name={ticker} stroke={color} strokeWidth={1.5} dot={false} activeDot={{ r: 4, strokeWidth: 0 }} />;
+                  const dash = DASH_PATTERNS[(colorIdx + 1) % DASH_PATTERNS.length];
+
+                  // Cổ phiếu đơn lẻ: Độ dày biến thiên từ 2.6px xuống 1.4px để tăng cường sự khác biệt
+                  const thickness = Math.max(1.4, 2.6 - (colorIdx * 0.4));
+
+                  return (
+                    <Line
+                      key={ticker}
+                      type="monotone"
+                      dataKey={ticker}
+                      name={ticker}
+                      stroke={color}
+                      strokeWidth={thickness}
+                      strokeDasharray={dash}
+                      dot={false}
+                      activeDot={{ r: 4, strokeWidth: 0 }}
+                    />
+                  );
                 })}
               </LineChart>
             </ResponsiveContainer>

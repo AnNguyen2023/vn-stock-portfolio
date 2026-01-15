@@ -28,8 +28,10 @@ const ScannerSection = dynamic(() => import("./sections/ScannerSection"), { ssr:
 
 // --- CẤU HÌNH MÀU SẮC (Dành cho 10 mã cổ phiếu) ---
 const PIE_COLORS = [
-  "#16a34a", "#2563eb", "#ea580c", "#ca8a04", "#9333ea",
-  "#06b6d4", "#f43f5e", "#84cc16", "#64748b", "#1e40af",
+  '#10b981', '#2563eb', '#f59e0b', '#e11d48', '#8b5cf6',
+  '#f97316', '#4f46e5', '#84cc16', '#db2777', '#64748b',
+  '#d946ef', '#059669', '#1d4ed8', '#d97706', '#be123c',
+  '#7c3aed', '#ea580c', '#4338ca', '#65a30d', '#c026d3'
 ];
 
 // -----------------------------
@@ -209,7 +211,7 @@ export default function Dashboard() {
       <div className="max-w-7xl mx-auto">
         <Header
           {...{
-            isPrivate, setIsPrivate, setShowDeposit, setShowWithdraw, setShowBuy,
+            isPrivate, setIsPrivate, setShowDeposit, setShowWithdraw, setShowBuy, setShowSell,
             fetchAllData, handleUndo
           }}
         />
@@ -248,13 +250,13 @@ export default function Dashboard() {
         </div>
 
         {/* TABLE */}
-        <StockTable {...{ data, buyForm, setBuyForm, sellForm, setSellForm, setShowBuy, setShowSell, lastUpdated: portfolioLastUpdated }} />
+        <StockTable {...{ data, buyForm, setBuyForm, sellForm, setSellForm, setShowBuy, setShowSell, lastUpdated: portfolioLastUpdated, navHistory }} />
 
         {/* HISTORY */}
         <HistoryTabs {...{ activeHistoryTab, setActiveHistoryTab, startDate, setStartDate, endDate, setEndDate, handleCalculateProfit, data, PIE_COLORS, historicalProfit, navHistory, logs, setEditingNote, setShowNoteModal }} />
 
         {/* MODALS */}
-        <CashModal {...{ showDeposit, showWithdraw, amount, setAmount, description, setDescription, handleAmountChange, handleDeposit, handleWithdraw, closeModals }} />
+        <CashModal {...{ showDeposit, showWithdraw, amount, setAmount, description, setDescription, handleAmountChange, handleDeposit, handleWithdraw, closeModals, availableBalance: data?.cash_balance || 0 }} />
         <TradeModal {...{ showBuy, showSell, buyForm, setBuyForm, sellForm, setSellForm, handleBuy, handleSell, handleVolumeChange, handlePriceChange, handlePriceBlur, closeModals, data }} />
         <UndoModal {...{ showUndoConfirm, setShowUndoConfirm, confirmUndo }} />
         <NoteModal {...{ showNoteModal, setShowNoteModal, editingNote, setEditingNote, handleUpdateNote }} />

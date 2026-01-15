@@ -96,14 +96,17 @@ def get_intraday_sparkline(ticker: str, memory_cache_get_fn, memory_cache_set_fn
         from datetime import datetime, timedelta
         
         stock = Vnstock().stock(symbol=ticker, source='VCI')
-        
+        if not stock:
+            return []
+            
         # 1. Try today's 1m data first
         today_str = datetime.now().strftime('%Y-%m-%d')
         session_date_str = today_str
         print(f"   [{ticker}] Checking today's session: {session_date_str}")
         try:
             df = stock.quote.history(interval='1m', start=session_date_str, end=session_date_str)
-        except Exception:
+        except Exception as ex:
+            print(f"   [{ticker}] Today fetch failed: {ex}")
             df = None
 
         if df is None or df.empty:
@@ -143,10 +146,11 @@ def get_intraday_sparkline(ticker: str, memory_cache_get_fn, memory_cache_set_fn
             
             # UNIFY TO POINTS (Standardize Index Units)
             # Normal index prices are ~500-3000. VND prices are > 1,000,000.
-            is_index = any(idx in ticker.upper() for idx in ["INDEX", "VN30", "HNX30", "VNINDEX"])
+            is_index = any(idx in ticker.upper() for idx in ["INDEX", "VN30", "HNX30", "HNX", "UPCOM"])
             if is_index:
                 # If values are raw (e.g. 1,867,900), divide by 1000
-                if df['close'].max() > 10000:
+                # Use mean to be robust against outliers/single correct points
+                if df['close'].mean() > 5000:
                     df['close'] = df['close'] / 1000
 
             # 4. Professional Intraday Grid (9:00 AM - 3:00 PM)
