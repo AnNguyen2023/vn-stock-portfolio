@@ -5,7 +5,7 @@ import StatusBadge from '../components/StatusBadge';
 import StockTrendingCell from '../components/StockTrendingCell';
 import StockTableRow from '../components/StockTableRow';
 
-export default function StockTable({ data, buyForm, setBuyForm, setSellForm, setShowBuy, setShowSell }) {
+export default function StockTable({ data, buyForm, setBuyForm, setSellForm, setShowBuy, setShowSell, navHistory }) {
   const [sortConfig, setSortConfig] = useState({ key: null, direction: 'asc' });
   const [isExpanded, setIsExpanded] = useState(false);
   const collapseTimeoutRef = useRef(null);
@@ -145,7 +145,7 @@ export default function StockTable({ data, buyForm, setBuyForm, setSellForm, set
                 <th className="p-4 text-center w-32 cursor-pointer hover:bg-emerald-100 transition-colors border-r border-slate-200 whitespace-nowrap" onClick={() => requestSort('weight')}>Tỷ trọng <SortIcon columnKey="weight" /></th>
                 <th className="p-4 text-center border-r border-slate-200 whitespace-nowrap cursor-pointer bg-amber-100/60 hover:bg-amber-100/80 transition-colors" onClick={() => requestSort('trending')}>
                   <div className="flex items-center justify-center gap-1 text-[13px] font-bold">
-                    XU HƯỚNG (5 PHIÊN) <SortIcon columnKey="trending" />
+                    XU HƯỚNG <SortIcon columnKey="trending" />
                   </div>
                 </th>
                 <th className="p-4 text-center cursor-pointer hover:bg-emerald-100 transition-colors border-r border-slate-200 whitespace-nowrap" onClick={() => requestSort('today_change_percent')}>
@@ -173,9 +173,11 @@ export default function StockTable({ data, buyForm, setBuyForm, setSellForm, set
               <tr>
                 <td colSpan={5} className="p-5 pl-6 text-slate-700 text-[20px] font-medium tracking-wide">Tổng giá trị danh mục</td>
                 <td className="p-5 text-right">
-                  <span className="text-sm font-bold text-emerald-600 bg-emerald-50 px-3 py-1 rounded-full whitespace-nowrap">
-                    ({data?.total_nav > 0 ? ((data.total_stock_value / data.total_nav) * 100).toFixed(2) : 0}% NAV)
-                  </span>
+                  {navHistory?.summary?.total_performance_pct !== undefined && (
+                    <span className={`text-base font-medium ${navHistory.summary.total_performance_pct >= 0 ? 'text-emerald-600' : 'text-rose-600'}`}>
+                      {navHistory.summary.total_performance_pct >= 0 ? '+' : ''}{navHistory.summary.total_performance_pct.toFixed(2)}%
+                    </span>
+                  )}
                 </td>
                 <td colSpan={3} className="p-5 pr-6 text-right">
                   <div className="flex items-baseline justify-end gap-1.5">

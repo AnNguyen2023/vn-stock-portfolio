@@ -15,8 +15,9 @@ from sqlalchemy.orm import Session
 import models
 import crawler
 from core.db import SessionLocal
-from core.redis_client import get_redis, cache_get, cache_set
+from core.redis_client import get_redis, cache_get, cache_set, cache_delete
 from core.logger import logger
+from core.utils import is_trading_hours
 
 # New Adapters
 from adapters import vci_adapter, vnstock_adapter
@@ -24,12 +25,14 @@ from adapters import vci_adapter, vnstock_adapter
 redis_client = get_redis()
 REDIS_AVAILABLE = redis_client is not None
 
-# --- UNIFIED CACHING ALIASES ---
-def mem_get(key: str) -> Optional[Any]:
-    return cache_get(key)
+# --- CONFIGURATION & BASELINES ---
+INDEX_BASELINES = {
+    "VNINDEX": 1250.00,  # Fallback if DB is empty
+    "VN30": 1300.00,
+    "HNX30": 550.00
+}
 
-def mem_set(key: str, val: Any, ttl: int) -> None:
-    cache_set(key, val, ttl)
+# Use cache_get/cache_set directly from core.redis_client
 
 def _process_single_ticker(t: str, p_info: dict, sec_info: dict | None = None) -> dict:
     """Hàm xử lý logic cho 1 mã (chạy trong thread)"""
@@ -58,10 +61,10 @@ def _process_single_ticker(t: str, p_info: dict, sec_info: dict | None = None) -
                 name = sec.short_name if sec else t
 
         # 3. SPARKLINE (Dùng Adapter)
-        sparkline = vci_adapter.get_sparkline_data(t, mem_get, mem_set)
+        sparkline = vci_adapter.get_sparkline_data(t, cache_get, cache_set)
 
         # 4. FINANCIAL RATIOS (Dùng Adapter)
-        ratios = vnstock_adapter.get_financial_ratios(t, mem_get, mem_set)
+        ratios = vnstock_adapter.get_financial_ratios(t, cache_get, cache_set)
 
         # 5. TRENDING INDICATOR (Batch Optimization)
         # Use the existing function but without background_tasks to keep this service light
@@ -99,7 +102,7 @@ def seed_index_data_task() -> None:
     """
     logger.info("Background job started: Syncing index historical data (VNINDEX, VN30, HNX30)")
     
-    indices = ["VNINDEX"]
+    indices = ["VNINDEX", "VN30", "HNX30"]
     total_count = 0
     
     with SessionLocal() as db:
@@ -114,18 +117,35 @@ def seed_index_data_task() -> None:
             for item in live_data:
                 try:
                     d = datetime.strptime(item["date"], "%Y-%m-%d").date()
+                    
+                    # Normalize Units using DataEngine helper
+                    from core.data_engine import DataEngine
+                    price, vol, val = DataEngine.normalize_units(
+                        symbol, 
+                        item.get("close", 0), 
+                        item.get("volume", 0), 
+                        item.get("value", 0)
+                    )
+                    
                     exist = db.query(models.HistoricalPrice).filter_by(ticker=symbol, date=d).first()
                     if not exist:
                         db.add(
                             models.HistoricalPrice(
                                 ticker=symbol,
                                 date=d,
-                                close_price=Decimal(str(item["close"])),
-                                volume=Decimal(str(item.get("volume", 0))),
-                                value=Decimal(str(item.get("value", 0))),
+                                close_price=price,
+                                volume=vol,
+                                value=val,
                             )
                         )
                         count += 1
+                    else:
+                        # Maintenance: Update if unit mismatch detected (> 5% difference)
+                        if abs(float(exist.close_price) - float(price)) / (float(price) or 1) > 0.05:
+                            exist.close_price = price
+                            exist.volume = vol
+                            exist.value = val
+                            count += 1
                 except Exception as e:
                     logger.debug(f"Error parsing historical item for {symbol}: {e}")
                     continue
@@ -296,13 +316,7 @@ def sync_securities_task() -> None:
 def invalidate_watchlist_detail_cache(watchlist_id: int):
     """Xóa cache chi tiết của một watchlist (dùng khi thêm/xóa mã)"""
     cache_key = f"wl_detail_v1:{watchlist_id}"
-    if REDIS_AVAILABLE:
-        try:
-            redis_client.delete(cache_key)
-        except:
-            pass
-    if cache_key in MEMORY_CACHE:
-        del MEMORY_CACHE[cache_key]
+    cache_delete(cache_key)
     print(f"[CACHE] Đã xóa cache cho watchlist {watchlist_id}")
 
 def get_watchlist_detail_service(tickers: list[str], watchlist_id: int | None = None) -> list[dict]:
@@ -318,21 +332,9 @@ def get_watchlist_detail_service(tickers: list[str], watchlist_id: int | None = 
     result_cache_key = None
     if watchlist_id:
         result_cache_key = f"wl_detail_v1:{watchlist_id}"
-        # Thử lấy từ Memory
-        cached_res = mem_get(result_cache_key)
+        cached_res = cache_get(result_cache_key)
         if cached_res:
             return cached_res
-        
-        # Thử lấy từ Redis
-        if REDIS_AVAILABLE:
-            try:
-                raw_redis = redis_client.get(result_cache_key)
-                if raw_redis:
-                    res_obj = json.loads(raw_redis)
-                    mem_set(result_cache_key, res_obj, 10) # Backfill memory 10s
-                    return res_obj
-            except:
-                pass
 
     # 1. Batch Metadata Fetch (LONG-TERM CACHE 1H)
     sec_metadata = {}
@@ -340,8 +342,7 @@ def get_watchlist_detail_service(tickers: list[str], watchlist_id: int | None = 
     
     for t in tickers_upper:
         meta_key = f"sec_meta_v1:{t}"
-        # Ưu tiên lấy từ Memory (vì 1h là rất lâu)
-        cached_meta = mem_get(meta_key)
+        cached_meta = cache_get(meta_key)
         if cached_meta:
             sec_metadata[t] = cached_meta
         else:
@@ -357,12 +358,7 @@ def get_watchlist_detail_service(tickers: list[str], watchlist_id: int | None = 
                 }
                 sec_metadata[sec.symbol] = meta_obj
                 # Cache metadata 8h (28800s)
-                mem_set(f"sec_meta_v1:{sec.symbol}", meta_obj, 28800)
-                if REDIS_AVAILABLE:
-                    try:
-                        redis_client.setex(f"sec_meta_v1:{sec.symbol}", 28800, json.dumps(meta_obj))
-                    except:
-                        pass
+                cache_set(f"sec_meta_v1:{sec.symbol}", meta_obj, 28800)
 
     # 2. Lấy giá Real-time (Batch Request)
     from crawler import get_current_prices
@@ -395,12 +391,7 @@ def get_watchlist_detail_service(tickers: list[str], watchlist_id: int | None = 
     
     # Lưu vào Result Cache (10 giây)
     if result_cache_key:
-        mem_set(result_cache_key, ordered_results, 10)
-        if REDIS_AVAILABLE:
-            try:
-                redis_client.setex(result_cache_key, 10, json.dumps(ordered_results))
-            except:
-                pass
+        cache_set(result_cache_key, ordered_results, 10)
                 
     return ordered_results
 
@@ -502,21 +493,26 @@ def _process_market_row(row: Any, index_name: str, db: Session, vps_data: dict =
             price /= 1000
 
         # CRITICAL: Get reference price from DATABASE (previous session's close)
-        # This is the ONLY reliable source for the previous day's closing price
         ref_price_db = 0
         try:
-            from datetime import date
-            today = date.today()
+            from core.utils import get_vietnam_time
+            vn_now = get_vietnam_time()
+            today_vn = vn_now.date()
+            
+            # Find the latest session STRICTLY BEFORE today
             prev_close = db.query(models.HistoricalPrice).filter(
                 models.HistoricalPrice.ticker == index_name,
-                models.HistoricalPrice.date < today
+                models.HistoricalPrice.date < today_vn
             ).order_by(models.HistoricalPrice.date.desc()).first()
             
             if prev_close:
                 ref_price_db = float(prev_close.close_price)
-                if ref_price_db > 5000:
+                if ref_price_db > 100000: # VND unit issue check
                     ref_price_db /= 1000
                 logger.info(f"[{index_name}] Using DB ref_price: {ref_price_db:.2f} from {prev_close.date}")
+            else:
+                ref_price_db = INDEX_BASELINES.get(index_name, 0)
+                logger.warning(f"[{index_name}] No DB history found for baseline fallback.")
         except Exception as e:
             db.rollback()
             logger.error(f"Failed to fetch ref_price from DB for {index_name}: {e}")
@@ -524,34 +520,23 @@ def _process_market_row(row: Any, index_name: str, db: Session, vps_data: dict =
         from adapters.vci_adapter import get_intraday_sparkline
         sparkline = []
         try:
-            sparkline = get_intraday_sparkline(index_name, mem_get, mem_set)
+            sparkline = get_intraday_sparkline(index_name, cache_get, cache_set)
         except Exception as se:
             logger.debug(f"Intraday sparkline failed for {index_name}: {se}")
 
-        # FALLBACK: If API price is 0 but we have sparkline, use latest sparkline point
+        # FALLBACK: If API price is 0 but we have sparkline, use latest VALID sparkline point
         if (price <= 0) and sparkline:
-            last_pt = sparkline[-1]
-            if last_pt.get('p') and last_pt['p'] > 0:
-                price = last_pt['p']
-                has_vps = True # Treat as live
-                logger.info(f"[{index_name}] Recovered price {price} from sparkline")
-            
-            if volume <= 0 and last_pt.get('v'):
-                volume = last_pt['v']
+            # Find the last point with a valid price (iterate backwards)
+            for pt in reversed(sparkline):
+                if pt.get('p') and pt['p'] > 0:
+                    price = pt['p']
+                    has_vps = True  # Treat as live
+                    logger.info(f"[{index_name}] Recovered price {price} from sparkline")
+                    if volume <= 0 and pt.get('v'):
+                        volume = pt['v']
+                    break
 
-        # Use DB ref_price if available, otherwise fallback to API (unreliable)
-        ref = ref_price_db if ref_price_db > 0 else float(ref_price_api or 0)
-        
-        # VPS Priority for ref if available
-        if vps_data and index_name in vps_data:
-            v_ref = vps_data[index_name].get("ref", 0)
-            if v_ref > 0 and ref_price_db == 0:
-                ref = v_ref
-
-        # SPECIAL OVERRIDES for isolated indices & stable baselines
-        if index_name == "VNINDEX": ref = 1902.93
-        if index_name == "VN30": ref = 2089.21
-        if index_name == "HNX30": ref = 556.05
+        ref = ref_price_db
 
         if ref > 5000:
             ref /= 1000
@@ -670,7 +655,7 @@ def _get_market_fallback(db: Session, indices: list[str]) -> list[dict]:
 
         sparkline = []
         try:
-            sparkline = get_intraday_sparkline(index_name, mem_get, mem_set) or []
+            sparkline = get_intraday_sparkline(index_name, cache_get, cache_set) or []
         except Exception as se:
             logger.warning(f"Sparkline fetch failed for {index_name}: {se}")
             sparkline = []
@@ -692,12 +677,13 @@ def _get_market_fallback(db: Session, indices: list[str]) -> list[dict]:
              val_fallback /= 1000
 
         # ... (final_ref overrides) ...
-        if index_name == "VNINDEX": final_ref = 1902.93
-        if index_name == "VN30": final_ref = 2089.21
-        if index_name == "HNX30":
-            vol_fallback = 102302043 # SSI CP
-            val_fallback = 2.618  # SSI Tỷ (corrected from 2618)
-            final_ref = 556.05
+        # Use DB ref if available, else static baseline
+        final_ref = ref if ref > 0 else INDEX_BASELINES.get(index_name, price * 0.99)
+        
+        if index_name == "HNX30" and vol_fallback <= 0:
+            # SSI example fallback data only if totally empty
+            vol_fallback = 1000000 
+            val_fallback = 2.5
 
         fallback_results.append({
             "index": index_name,
@@ -714,67 +700,71 @@ def _get_market_fallback(db: Session, indices: list[str]) -> list[dict]:
     return fallback_results
 
 def get_market_summary_service(db: Session) -> list[dict]:
-    """Fetch market summary (VNINDEX, VN30, HNX30)."""
+    """Fetch market summary (VNINDEX, VN30, HNX30) with Wait-for-Health VPS priority."""
     indices = ["VNINDEX", "VN30", "HNX30"]
-    cache_key = "market_summary_full_v10"
+    cache_key = "market_summary_v11_short"
     
-    # 0. Cache disabled for VN30/HNX30 per user request
-    # To ensure fresh data, we bypass the global cache read
-    # cached = mem_get(cache_key)
-    # if cached:
-    #     return cached
-    pass
+    # 0. Short-TTL caching (2 seconds) to handle high-frequency frontend requests
+    cached = cache_get(cache_key)
+    if cached:
+        return cached
 
     results = []
+    processed_indices = []
+    
     try:
-        # 1. Fetch real-time Index from VPS (Priority Source)
-        from adapters.vps_adapter import get_realtime_prices_vps
-        vps_data = get_realtime_prices_vps(indices)
+        trading_active = is_trading_hours()
+        vps_data = {}
         
-        # 2. Fetch Index from Vnstock (VCI price board) - Supplementary
-        from vnstock import Trading
-        df_indices = Trading(source='VCI').price_board(indices)
-        
-        processed_indices = []
-        if df_indices is not None and not df_indices.empty:
-            for _, row in df_indices.iterrows():
-                idx_name = row.get(('listing', 'symbol'))
-                if idx_name:
-                    processed = _process_market_row(row, idx_name, db, vps_data)
+        # 1. Fetch Realtime if currently trading
+        if trading_active:
+            from adapters.vps_adapter import get_realtime_prices_vps
+            vps_data = get_realtime_prices_vps(indices)
+            
+            # Check if VPS returned data for ALL indices (Health Check)
+            vps_healthy = vps_data and all(idx in vps_data for idx in indices)
+            
+            if vps_healthy:
+                logger.info("Market OPEN: VPS healthy. Skipping VCI.")
+                for idx in indices:
+                    processed = _process_market_row(pd.Series({('listing', 'symbol'): idx}), idx, db, vps_data)
                     if processed:
                         results.append(processed)
-                        processed_indices.append(idx_name)
-        
-        # 3. If any index is missing from VCI but exists in VPS, process it
-        for idx in indices:
-            if idx not in processed_indices and vps_data and idx in vps_data:
-                # Create a pseudo-row for indices not in VCI board but in VPS
-                # _process_market_row handles pd.Series() by using vps_data primarily
-                processed = _process_market_row(pd.Series({('listing', 'symbol'): idx}), idx, db, vps_data)
-                if processed:
-                    results.append(processed)
-                    processed_indices.append(idx)
+                        processed_indices.append(idx)
+            else:
+                # VCI Fallback during trading
+                logger.warning(f"Market OPEN: VPS incomplete ({len(vps_data) if vps_data else 0}/3). Trying VCI.")
+                from vnstock import Trading
+                df_indices = Trading(source='VCI').price_board(indices)
+                if df_indices is not None and not df_indices.empty:
+                    for _, row in df_indices.iterrows():
+                        idx_name = row.get(('listing', 'symbol'))
+                        if idx_name:
+                            processed = _process_market_row(row, idx_name, db, vps_data)
+                            if processed:
+                                results.append(processed)
+                                processed_indices.append(idx_name)
+        else:
+            logger.info("Market CLOSED/WEEKEND: Bypassing live fetch, using DB history (Session N vs N-1).")
+            # When closed, we strictly use DB fallback logic which handles Session N/N-1
+            # results remains empty here to trigger Step 3
+            pass
 
     except Exception as e:
         logger.error(f"Market fetch failed: {e}")
 
-    # 4. Final Fallback from DB if result is empty or missing indices
-    if not results or len(results) < len(indices):
-        logger.info("Falling back to database/history for missing indices")
-        fallback_results = _get_market_fallback(db, indices)
-        # Merge results, prioritizing live ones
-        processed_names = [r['index'] for r in results]
-        for f in fallback_results:
-            if f['index'] not in processed_names:
-                results.append(f)
+    # 3. Final Fallback from DB/History for any missing indices (including all indices if market closed)
+    if len(results) < len(indices):
+        missing = [idx for idx in indices if idx not in processed_indices]
+        fallback_results = _get_market_fallback(db, missing)
+        results.extend(fallback_results)
             
     # Sort results to match requested order
     results.sort(key=lambda x: indices.index(x['index']) if x['index'] in indices else 99)
     
     if results:
-        # Cache disabled per user request
-        # mem_set(cache_key, results, 10)
-        pass
+        # Cache for 2 seconds (L1 RAM + L2 Redis)
+        cache_set(cache_key, results, 2)
         
     return results
 

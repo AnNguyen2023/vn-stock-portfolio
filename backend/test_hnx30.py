@@ -10,9 +10,8 @@ def test_hnx30_sources():
             try:
                 df = Trading(source=src).price_board([index_symbol])
                 if df is not None and not df.empty:
-                    # Print relevant columns
-                    cols = df.columns
-                    print(df[[('listing', 'symbol'), ('match', 'match_price'), ('trading', 'total_volume'), ('trading', 'total_value')]].to_string() if ('match', 'match_price') in df.columns else df.to_string())
+                    print("Columns:", df.columns)
+                    print(df.iloc[0])
                 else:
                     print(f"Source {src} returned empty result for {index_symbol}")
             except Exception as e:

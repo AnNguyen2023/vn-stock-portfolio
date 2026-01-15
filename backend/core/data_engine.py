@@ -20,6 +20,31 @@ class DataEngine:
         return setting.value if setting else default
 
     @staticmethod
+    def normalize_units(ticker: str, price: float, vol: float = 0, val: float = 0) -> Tuple[Decimal, Decimal, Decimal]:
+        """
+        Universal unit normalization for Vietnam market data.
+        - Indices: Normalized to Points (e.g. 1250). If raw VND (>5000), divide by 1000.
+        - Stocks: Normalized to VND (e.g. 17100). If in 1000 VND units (<1000), multiply by 1000.
+        """
+        from typing import Tuple
+        INDICES = ["VNINDEX", "VN30", "HNX30", "HNXINDEX", "UPCOMINDEX"]
+        p = float(price)
+        v = float(vol)
+        va = float(val)
+
+        if ticker.upper() in INDICES:
+            if p > 5000:
+                p /= 1000
+            if va > 100000: # Value in Billions or raw VND
+                va /= 1000
+        else:
+            # Stocks/ETFs
+            if p > 0 and p < 1000: # Likely 1000 VND units (e.g. 17.1)
+                p *= 1000
+        
+        return Decimal(str(p)), Decimal(str(v)), Decimal(str(va))
+
+    @staticmethod
     def set_setting(db: Session, key: str, value: str):
         setting = db.query(models.SystemSetting).filter(models.SystemSetting.key == key).first()
         if setting:
@@ -59,11 +84,16 @@ class DataEngine:
         with SessionLocal() as db:
             # 1. Get all tickers in portfolio with ACTIVE holdings (total_volume > 0)
             holdings = db.query(models.TickerHolding.ticker).filter(models.TickerHolding.total_volume > 0).all()
-            tickers = [h[0] for h in holdings]
+            portfolio_tickers = [h[0] for h in holdings]
+
+            # 2. Get all tickers in all Watchlists
+            watchlist_tickers = db.query(models.WatchlistTicker.ticker).distinct().all()
+            wl_tickers = [w[0] for w in watchlist_tickers]
             
-            # 2. Add indices (Limit to 3 core indices)
+            # 3. Add indices (Core indices)
             indices = ["VNINDEX", "VN30", "HNX30"]
-            all_symbols = list(set(tickers + indices))
+            
+            all_symbols = list(set(portfolio_tickers + wl_tickers + indices))
             
             vn = Vnstock()
             start_str = start_date.strftime("%Y-%m-%d")
@@ -182,6 +212,9 @@ class DataEngine:
             close_p = Decimal(str(row.get('close') or row.get('close_p') or 0))
             vol = Decimal(str(row.get('volume') or row.get('vol') or 0))
             val = Decimal(str(row.get('value') or row.get('val') or 0))
+
+            # Apply universal unit normalization
+            close_p, vol, val = cls.normalize_units(symbol, float(close_p), float(vol), float(val))
             
             # Use extra data to refine today's record
             if is_today and d == date.today() and extra:

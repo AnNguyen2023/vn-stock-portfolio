@@ -99,7 +99,7 @@ export default function WatchlistRow({ item, onRemove, isSelected, onToggle }) {
             <td className="p-3 relative">
                 <div className={`absolute left-0 top-3 bottom-3 w-1.5 rounded-r-full ${theme.bg}`}></div>
                 <div className="flex flex-col items-center">
-                    <div className={`font-medium text-[13px] ${theme.text}`}>{item.ticker}</div>
+                    <div className={`font-medium text-[15px] ${theme.text}`}>{item.ticker}</div>
                     <div className="text-[10px] text-slate-400 font-medium truncate max-w-[100px]">{item.organ_name}</div>
                 </div>
             </td>

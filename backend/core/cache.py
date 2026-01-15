@@ -8,7 +8,7 @@ from typing import Any, Callable, Optional
 from core.redis_client import get_redis, safe_cache_delete
 
 
-from core.redis_client import cache_get as redis_cache_get, cache_set as redis_cache_set, safe_cache_delete
+from core.redis_client import cache_get as redis_cache_get, cache_set as redis_cache_set, cache_delete
 
 
 def cache_get(r, key: str):
@@ -22,8 +22,9 @@ def cache_setex(r, key: str, ttl_sec: int, obj: Any):
 
 
 def invalidate_dashboard_cache():
-    safe_cache_delete(
+    cache_delete(
         "dashboard_performance",
+        "dashboard:portfolio",
         "chart_growth_1m",
         "chart_growth_3m",
         "chart_growth_6m",

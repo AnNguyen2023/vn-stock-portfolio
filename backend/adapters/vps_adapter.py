@@ -1,3 +1,4 @@
+from typing import Any, Dict, List, Optional
 import requests
 import logging
 
@@ -17,10 +18,15 @@ def _safe_float(val: Any, default: float = 0.0) -> float:
     except (ValueError, TypeError):
         return default
 
-def get_realtime_prices_vps(symbols: list[str]) -> dict:
+def get_realtime_prices_vps(symbols: List[str]) -> Dict[str, Dict[str, Any]]:
     """
     Fetches realtime price data from VPS API.
-    Returns a dict: { "SYMBOL": { "price": ..., "ref": ..., "ceiling": ..., "floor": ..., "volume": ... }, ... }
+    Returns a dict: { "SYMBOL": { "price": ..., "ref": ..., "ceiling": ..., "floor": ..., "volume": ..., "value": ... }, ... }
+    
+    Units:
+    - price/ref: points or VND
+    - volume: absolute shares (frontend will divide by 1M for display)
+    - value: Billions of VND (Tỷ)
     """
     if not symbols:
         return {}
@@ -36,6 +42,7 @@ def get_realtime_prices_vps(symbols: list[str]) -> dict:
         "VNINDEX": "10",
         "VN30": "11",
         "HNX": "02",
+        "HNX30": "0230", # HNX30 specific code if exists, else fallback
         "UPCOM": "03"
     }
     
@@ -55,18 +62,26 @@ def get_realtime_prices_vps(symbols: list[str]) -> dict:
                     sym = item.get("sym", "").upper()
                     if not sym: continue
                     
+                    # Prices in VND (item.get is often in units of 1000 VND)
                     price = _safe_float(item.get("lastPrice")) * 1000
                     ref = _safe_float(item.get("r")) * 1000
+                    
+                    # Volume: VPS 'lot' field is usually absolute units of 10 shares in some contexts, 
+                    # but 'vol' or 'lot' in getliststockdata is often total units.
+                    # We want absolute units for the frontend.
                     volume = _safe_float(item.get("lot")) * 10 
                     
+                    # Value: val_raw is usually in VND. We want Billions.
                     val_raw = item.get("totalVal") or item.get("totalValue") or item.get("val") or 0
                     value = _safe_float(val_raw) / 1e9 if val_raw else 0
                     
                     results[sym] = {
-                        "price": price, "ref": ref, 
-                        "ceiling": float(item.get("c", 0)) * 1000,
-                        "floor": float(item.get("f", 0)) * 1000,
-                        "volume": volume, "value": value
+                        "price": price, 
+                        "ref": ref, 
+                        "ceiling": _safe_float(item.get("c")) * 1000,
+                        "floor": _safe_float(item.get("f")) * 1000,
+                        "volume": volume, 
+                        "value": value
                     }
         except Exception as e:
             logger.error(f"[VPS] Stock fetch error: {e}")
@@ -94,30 +109,29 @@ def get_realtime_prices_vps(symbols: list[str]) -> dict:
                     ot = item.get("ot", "")
                     ot_parts = ot.split("|") if ot else []
                     
-                    value = 0
+                    value = 0.0
                     if len(ot_parts) >= 3:
-                        # Third part is liquidity (Value). 
-                        # VPS Index API 'ot' value part is in MILLIONS of VND.
-                        # We want it in BILLIONS of VND. So divide by 1000.
+                        # VPS Index API 'ot' value part is usually in MILLIONS of VND.
+                        # Convert to Billions by dividing by 1000.
                         val_raw = _safe_float(ot_parts[2])
                         value = val_raw / 1000
-                        logger.info(f"[VPS] {sym} value from ot: {val_raw} -> {value} billion")
+                        logger.debug(f"[VPS] {sym} value from ot: {val_raw}M -> {value}B")
                     
-                    # CRITICAL FIX: If value is still 0, estimate from volume
-                    if value == 0 and volume > 0:
-                        # Estimate: value ≈ volume * average_price / 1000 (to get billions)
-                        # For indices, use current price as proxy for average
-                        value = (volume * price) / 1000
-                        logger.warning(f"[VPS] {sym} estimated value from volume: {value:.3f} billion")
+                    # CRITICAL: Estimate value if missing but volume exists
+                    if value <= 0 and volume > 0:
+                        # Estimation: (volume * price) / 1000 if price is points
+                        # If price is raw (e.g. 1,200,000), then it's (vol * price / 1e9)
+                        price_pts = price / 1000 if price > 5000 else price
+                        value = (volume * price_pts) / 1000
+                        logger.warning(f"[VPS] {sym} estimated value: {value:.3f}B")
                     
-                    # Safe float conversion for change value (ot_parts[0])
-                    change_val = _safe_float(ot_parts[0]) if len(ot_parts) > 0 else 0
+                    change_val = _safe_float(ot_parts[0]) if len(ot_parts) > 0 else 0.0
                         
                     results[sym] = {
                         "price": price, 
                         "ref": price - change_val,
-                        "ceiling": 0,
-                        "floor": 0,
+                        "ceiling": 0.0,
+                        "floor": 0.0,
                         "volume": volume, 
                         "value": value
                     }

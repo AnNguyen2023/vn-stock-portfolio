@@ -17,13 +17,13 @@ export default function RealizedProfit({ historicalProfit, navHistory }) {
                     ) : (
                         <div className="bg-white p-5 rounded-[24px] border border-slate-400 shadow-[0_8px_30px_rgb(0,0,0,0.04)] min-h-[280px] flex flex-col justify-center">
                             <p className="text-[15px] text-slate-700 font-normal uppercase mb-2 tracking-[0.1em]">Tổng lãi/lỗ ròng</p>
-                            <p className={`text-[26px] font-bold tracking-tight ${historicalProfit.total_profit >= 0 ? 'text-emerald-600' : 'text-rose-600'}`}>
+                            <p className={`text-[26px] font-normal tracking-tight ${historicalProfit.total_profit >= 0 ? 'text-emerald-600' : 'text-rose-600'}`}>
                                 {historicalProfit.total_profit >= 0 ? '+' : ''}{Math.floor(historicalProfit.total_profit).toLocaleString('en-US')}
-                                <span className="text-[11px] font-extrabold text-slate-400 ml-1.5 uppercase tracking-wider">VND</span>
+                                <span className="text-[11px] font-normal text-slate-400 ml-1.5 uppercase tracking-wider">VND</span>
                             </p>
                             <div className="mt-6 pt-4 border-t border-slate-100 flex justify-between items-center">
                                 <span className="text-[15px] text-slate-700 font-normal uppercase tracking-wider">Số lệnh đã chốt</span>
-                                <span className="font-extrabold text-slate-700">{historicalProfit.trade_count} lệnh</span>
+                                <span className="font-normal text-slate-700">{historicalProfit.trade_count} lệnh</span>
                             </div>
                         </div>
                     )}
@@ -36,15 +36,21 @@ export default function RealizedProfit({ historicalProfit, navHistory }) {
 
                         {/* PHẦN TỔNG HỢP HIỆU SUẤT TỔNG THEO SSI */}
                         {navHistory?.summary && (
-                            <div className="p-5 bg-slate-50/50 border-b border-slate-400 grid grid-cols-2 gap-4">
+                            <div className="p-5 bg-slate-50/50 border-b border-slate-400 grid grid-cols-2 lg:grid-cols-3 gap-6">
                                 <div className="space-y-1">
                                     <p className="text-[12px] text-slate-500 font-medium uppercase tracking-wider">Hiệu suất đầu tư</p>
                                     <p className={`text-[22px] font-semibold ${navHistory.summary.total_performance_pct >= 0 ? 'text-emerald-600' : 'text-rose-600'}`}>
                                         {navHistory.summary.total_performance_pct >= 0 ? '+' : ''}{navHistory.summary.total_performance_pct.toFixed(2)}%
                                     </p>
                                 </div>
-                                <div className="space-y-1 text-right">
-                                    <p className="text-[12px] text-slate-500 font-medium uppercase tracking-wider">Net nộp rút</p>
+                                <div className="space-y-1">
+                                    <p className="text-[12px] text-slate-500 font-medium uppercase tracking-wider">Lợi nhuận tổng</p>
+                                    <p className={`text-[22px] font-semibold ${navHistory.summary.total_profit >= 0 ? 'text-emerald-600' : 'text-rose-600'}`}>
+                                        {navHistory.summary.total_profit >= 0 ? '+' : ''}{Math.floor(navHistory.summary.total_profit).toLocaleString()} <span className="text-[11px] font-normal text-slate-400 italic">VND</span>
+                                    </p>
+                                </div>
+                                <div className="space-y-1 text-right lg:text-left">
+                                    <p className="text-[12px] text-slate-500 font-medium uppercase tracking-wider">Net nộp rút cá nhân</p>
                                     <p className="text-[22px] font-semibold text-slate-700">
                                         {navHistory.summary.net_flow >= 0 ? '+' : ''}{Math.floor(navHistory.summary.net_flow).toLocaleString('en-US')} <span className="text-[11px] font-extrabold text-slate-400 uppercase tracking-wider">VND</span>
                                     </p>

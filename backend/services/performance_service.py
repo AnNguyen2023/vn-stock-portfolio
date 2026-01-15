@@ -55,18 +55,41 @@ def _pick_current_price(price_info: Any, avg_price: Decimal) -> Decimal:
         return avg_price
 
 
-def _net_cash_flow(db: Session, start: date, end: date | None = None) -> Decimal:
-    """Calculates net cash flow (Deposits - Withdrawals) for a period."""
-    q = db.query(models.CashFlow).filter(cast(models.CashFlow.created_at, Date) >= start)
+def _is_external_capital_flow(f: models.CashFlow) -> bool:
+    """
+    Determines if a flow is an external capital injection/withdrawal.
+    Trade proceeds, dividends, and interest are part of 'Return', not 'Capital Flow'.
+    """
+    if f.type in [models.CashFlowType.INTEREST, models.CashFlowType.DIVIDEND_CASH, models.CashFlowType.CUSTODY_FEE]:
+        return False
+    
+    desc = (f.description or "").strip()
+    if not desc:
+        return True # Manual deposits often have no description
+        
+    # Exclude system-generated trade flows
+    import re
+    if re.match(r"^(Buy|Sell|Mua|Bán|Khớp lệnh)\s+", desc, re.IGNORECASE):
+        return False
+        
+    return True
+
+def _net_cash_flow(db: Session, start: datetime | date, end: datetime | date | None = None, only_external: bool = True) -> Decimal:
+    """Calculates net cash flow (Deposits - Withdrawals) for a period using precise timestamps."""
+    q = db.query(models.CashFlow).filter(models.CashFlow.created_at >= start)
     if end is not None:
-        q = q.filter(cast(models.CashFlow.created_at, Date) <= end)
+        q = q.filter(models.CashFlow.created_at <= end)
 
     net = Decimal("0")
     for f in q.all():
+        if only_external and not _is_external_capital_flow(f):
+            continue
+            
+        amt = _d(f.amount)
         if f.type == models.CashFlowType.DEPOSIT:
-            net += _d(f.amount)
+            net += amt
         elif f.type == models.CashFlowType.WITHDRAW:
-            net -= _d(f.amount)
+            net -= amt
     return net
 
 
@@ -232,15 +255,31 @@ def growth_series(db: Session, period: str = "1m") -> Dict[str, Any]:
         day_prices = price_map[day]
         item = {"date": day.strftime("%Y-%m-%d")}
         
+        # 1. PORTFOLIO GROWTH
+        val_t = portfolio_daily_values[i]
+        # If today's portfolio value is 0 but previous was > 0, it means sync is incomplete
+        if val_t <= 0 and i > 0 and portfolio_daily_values[i-1] > 0:
+            val_t = portfolio_daily_values[i-1]
+            portfolio_daily_values[i] = val_t # Update for consistency
+            
         p_growth = Decimal("0")
-        if base_nav > 0 and i >= first_valid_port_idx:
-            p_growth = (portfolio_daily_values[i] - base_nav) / base_nav * 100
+        if base_nav > 0 and i >= first_valid_port_idx and val_t > 0:
+            p_growth = (val_t - base_nav) / base_nav * 100
         item["PORTFOLIO"] = round(_safe_float(p_growth), 2)
         
+        # 2. TICKER GROWTH (Indices & Stocks)
         for t in fetch_tickers:
             t_growth = Decimal("0")
             base_p = ticker_base_prices.get(t, Decimal("0"))
             curr_p = day_prices.get(t, Decimal("0"))
+            
+            # Fallback for ticker price if 0 (incomplete sync)
+            if curr_p <= 0 and i > 0:
+                prev_p = price_map[sorted_dates[i-1]].get(t, Decimal("0"))
+                if prev_p > 0:
+                    curr_p = prev_p
+                    price_map[day][t] = curr_p # Update map
+            
             if base_p > 0 and curr_p > 0:
                 t_growth = (curr_p - base_p) / base_p * 100
             item[t] = round(_safe_float(t_growth), 2)
@@ -258,9 +297,12 @@ def growth_series(db: Session, period: str = "1m") -> Dict[str, Any]:
 def nav_history(db: Session, start_date: date | None = None, end_date: date | None = None, limit: int = 30) -> Dict[str, Any]:
     """
     Returns historical NAV records with performance summary metrics.
+    Fixes discontinuous snapshot gaps and integrates live NAV data using precise timestamps.
     """
+    # 1. Fetch historical snapshots
     query = db.query(models.DailySnapshot)
     if start_date:
+        # Search slightly earlier to get the 'prev' snapshot for the first day in table
         search_start = start_date - timedelta(days=7)
         query = query.filter(models.DailySnapshot.date >= search_start)
     if end_date:
@@ -270,31 +312,68 @@ def nav_history(db: Session, start_date: date | None = None, end_date: date | No
     if not start_date:
         snaps = snaps[:limit]
 
-    if snaps:
-        flows_map = _get_flows_map(db, snaps[-1].date, snaps[0].date)
-    else:
-        flows_map = {}
+    # Convert snaps to list for modification
+    snap_list = list(snaps)
 
+    # 2. Prepend LIVE data if today isn't snapped or if we want latest valuation
+    from services.portfolio_service import calculate_portfolio
+    live_data = calculate_portfolio(db)
+    live_nav = _d(live_data.get("total_nav", 0))
+    now = datetime.now()
+    today = now.date()
+
+    # If the first snap is not today, add a virtual "Live" snapshot
+    if not snap_list or snap_list[0].date != today:
+        # Create a transient object with CURRENT TIMESTAMPS
+        live_snap = models.DailySnapshot(date=today, total_nav=live_nav, created_at=now)
+        snap_list.insert(0, live_snap)
+    else:
+        # Update first snap with live data and current time for flow sync
+        snap_list[0].total_nav = live_nav
+        snap_list[0].created_at = now
+
+    # 3. Calculate Global Summary first (more robust than summing loop results)
+    # This ensures even if we have 1 snap, we see the net flows that created it.
+    global_start = (snap_list[-1].created_at or datetime.combine(snap_list[-1].date, datetime.min.time())) if snap_list else datetime.now()
+    if start_date:
+        global_start = min(global_start, datetime.combine(start_date, datetime.min.time()))
+    
+    # We want ALL external flows in the visible range to show in the header summary
+    entire_net_flow = _net_cash_flow(db, start=global_start, end=now)
+
+    # 4. Process records and calculate period returns
     res: List[Dict[str, Any]] = []
     total_r_plus_1 = 1.0
-    total_net_flow = Decimal("0")
     
-    for i in range(len(snaps)):
-        curr = snaps[i]
+    for i in range(len(snap_list)):
+        curr = snap_list[i]
+        
+        # Skip output if outside user-requested range, but we still need it for 'prev' calculations
         if start_date and curr.date < start_date:
             continue
+            
         curr_nav = _d(curr.total_nav)
         
-        if i + 1 < len(snaps):
-            prev = snaps[i + 1]
+        if i + 1 < len(snap_list):
+            prev = snap_list[i + 1]
             prev_nav = _d(prev.total_nav)
-            net_flow = flows_map.get(curr.date, Decimal("0"))
+            
+            # CRITICAL SYNC: Use timestamps (created_at) to find flows
+            # Fallback to 15:00 if created_at is missing (legacy data)
+            c_ts = curr.created_at or datetime.combine(curr.date, datetime.min.time().replace(hour=15))
+            p_ts = prev.created_at or datetime.combine(prev.date, datetime.min.time().replace(hour=15))
+            
+            net_flow = _net_cash_flow(db, start=p_ts, end=c_ts)
+            
             profit, pct = _calc_profit_pct(curr_nav, prev_nav, net_flow)
+            
             if math.isfinite(pct):
                 total_r_plus_1 *= (1 + pct / 100)
-            total_net_flow += net_flow
+            
             change = curr_nav - prev_nav - net_flow
         else:
+            # First ever record in history - profit since inception? 
+            # For the table row, we'll keep it as 0 unless we want to compare vs its own flows
             change = Decimal("0")
             pct = 0.0
 
@@ -305,12 +384,26 @@ def nav_history(db: Session, start_date: date | None = None, end_date: date | No
             "pct": pct,
         })
     
+    # Total Profit calculation: End NAV - Start NAV - Flows
+    first_nav = _d(snap_list[-1].total_nav) if snap_list else Decimal("0")
+    last_nav = _d(snap_list[0].total_nav) if snap_list else Decimal("0")
+    
+    # If this is the inception period (first snap), start_nav is effectively 0 from a "total gain" perspective
+    # but TWR math usually expects a base. For the summary, we show the real economic gain.
+    summary_profit = last_nav - entire_net_flow
+    if len(snap_list) > 1:
+        # If we have history, economic gain = change in NAV minus net flows
+        summary_profit = last_nav - first_nav - entire_net_flow
+
     perf_pct = (total_r_plus_1 - 1) * 100
+    if len(snap_list) == 1 and entire_net_flow > 0:
+        perf_pct = (summary_profit / entire_net_flow) * 100
+
     summary = {
-        "start_nav": _safe_float(snaps[-1].total_nav) if snaps else 0,
-        "end_nav": _safe_float(snaps[0].total_nav) if snaps else 0,
-        "net_flow": _safe_float(total_net_flow),
-        "total_profit": sum(item["change"] for item in res),
+        "start_nav": _safe_float(first_nav),
+        "end_nav": _safe_float(last_nav),
+        "net_flow": _safe_float(entire_net_flow),
+        "total_profit": _safe_float(summary_profit),
         "total_performance_pct": _safe_float(perf_pct)
     }
 

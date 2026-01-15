@@ -2,7 +2,7 @@
 
 export default function CashModal({
   showDeposit, showWithdraw, amount, setAmount, description, setDescription,
-  handleAmountChange, handleDeposit, handleWithdraw, closeModals
+  handleAmountChange, handleDeposit, handleWithdraw, closeModals, availableBalance = 0
 }) {
   if (!showDeposit && !showWithdraw) return null;
 
@@ -12,6 +12,17 @@ export default function CashModal({
         <h2 className={`text-lg font-bold mb-6 uppercase tracking-tight ${showDeposit ? 'text-emerald-600' : 'text-purple-600'}`}>
           {showDeposit ? 'Nạp tiền vào ví' : 'Rút tiền khỏi ví'}
         </h2>
+
+        {/* Available Balance Banner (Withdraw Only) */}
+        {showWithdraw && (
+          <div className="mb-6 p-4 bg-purple-50 border border-purple-100 rounded-2xl">
+            <p className="text-xs text-purple-500 font-medium uppercase tracking-wider mb-1">Số dư khả dụng</p>
+            <p className="text-2xl font-bold text-purple-700">
+              {Math.floor(availableBalance).toLocaleString('en-US')} <span className="text-sm font-normal text-purple-400">VND</span>
+            </p>
+          </div>
+        )}
+
         <form onSubmit={showDeposit ? handleDeposit : handleWithdraw} className="space-y-6">
           <div>
             <label className="text-sm font-medium text-slate-600 uppercase tracking-widest ml-1 mb-2 block">Số tiền (VND)</label>

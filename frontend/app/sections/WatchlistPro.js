@@ -442,7 +442,7 @@ export default function WatchlistPro() {
                                     </th>
                                     <th className="p-4 w-[14%] text-center cursor-pointer bg-amber-100/60 hover:bg-amber-100/80 transition-colors whitespace-nowrap" onClick={() => requestSort('trending')}>
                                         <div className="flex items-center justify-center gap-1 text-[13px] font-bold">
-                                            XU HƯỚNG (5 PHIÊN) <SortIcon columnKey="trending" />
+                                            XU HƯỚNG <SortIcon columnKey="trending" />
                                         </div>
                                     </th>
                                     <th className="p-4 w-[10%] text-right cursor-pointer hover:bg-emerald-100 transition-colors" onClick={() => requestSort('pb')}>
