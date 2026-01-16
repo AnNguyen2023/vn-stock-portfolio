@@ -1,12 +1,11 @@
 "use client";
 import React, { useState, useMemo, useEffect, useRef } from 'react';
-import { List, PlusCircle, MinusCircle, TrendingUp, TrendingDown, Minus, ArrowUpDown, ChevronDown } from 'lucide-react';
+import { List, TrendingUp, TrendingDown, Minus, PlusCircle, MinusCircle, ChevronDown, ArrowUpDown } from 'lucide-react';
 import StatusBadge from '../components/StatusBadge';
 import StockTrendingCell from '../components/StockTrendingCell';
-
 import { toast } from 'sonner';
 
-export default function StockTable({ data, buyForm, setBuyForm, setSellForm, setShowBuy, setShowSell }) {
+export default function StockTable({ data, buyForm, setBuyForm, setSellForm, setShowBuy, setShowSell, navHistory }) {
   const [sortConfig, setSortConfig] = useState({ key: null, direction: 'asc' });
   const [isExpanded, setIsExpanded] = useState(false);
   const collapseTimeoutRef = useRef(null);
@@ -14,14 +13,12 @@ export default function StockTable({ data, buyForm, setBuyForm, setSellForm, set
   // Auto-collapse after 10 minutes (600000ms)
   useEffect(() => {
     if (isExpanded) {
-      // Clear any existing timeout
       if (collapseTimeoutRef.current) {
         clearTimeout(collapseTimeoutRef.current);
       }
-      // Set new timeout for 10 minutes
       collapseTimeoutRef.current = setTimeout(() => {
         setIsExpanded(false);
-      }, 600000); // 10 minutes
+      }, 600000);
     }
     return () => {
       if (collapseTimeoutRef.current) {
@@ -37,13 +34,11 @@ export default function StockTable({ data, buyForm, setBuyForm, setSellForm, set
         let aValue = a[sortConfig.key];
         let bValue = b[sortConfig.key];
 
-        // Special handling for nested trending object
         if (sortConfig.key === 'trending') {
           aValue = a.trending?.change_pct ?? -Infinity;
           bValue = b.trending?.change_pct ?? -Infinity;
         }
 
-        // Handle undefined/null
         if (aValue === undefined || aValue === null) aValue = -Infinity;
         if (bValue === undefined || bValue === null) bValue = -Infinity;
 
@@ -76,6 +71,7 @@ export default function StockTable({ data, buyForm, setBuyForm, setSellForm, set
       />
     );
   };
+
   return (
     <div className="bg-white rounded-2xl shadow-sm border border-slate-400 overflow-hidden mb-6">
       <div
@@ -89,6 +85,7 @@ export default function StockTable({ data, buyForm, setBuyForm, setSellForm, set
           </div>
           <span className="px-2 py-0.5 bg-slate-100 text-slate-500 text-xs font-bold rounded-full">{data?.holdings?.length || 0} mã</span>
         </div>
+
         {/* Action Buttons */}
         <div className="flex items-center gap-2">
           <button
@@ -124,67 +121,62 @@ export default function StockTable({ data, buyForm, setBuyForm, setSellForm, set
         </div>
       </div>
 
-      {/* Collapsible Content with Curtain Animation */}
+      {/* Collapsible Content */}
       <div
-        className={`overflow-hidden transition-all duration-500 ease-in-out ${isExpanded ? 'max-h-[2000px] opacity-100' : 'max-h-0 opacity-0'
-          }`}
+        className={`overflow-hidden transition-all duration-500 ease-in-out ${isExpanded ? 'max-h-[2000px] opacity-100' : 'max-h-0 opacity-0'}`}
       >
         <div className="overflow-x-auto">
           <table className="w-full text-left border-collapse">
             <thead className="bg-slate-50/50 text-slate-500 text-[13px] uppercase font-bold tracking-[0.12em] border-b border-slate-200">
               <tr>
-                <th className="p-4 pl-6 cursor-pointer hover:bg-emerald-100 transition-colors border-r border-slate-200 whitespace-nowrap" onClick={() => requestSort('ticker')}>Mã CK <SortIcon columnKey="ticker" /></th>
+                <th className="p-4 pl-6 cursor-pointer hover:bg-emerald-100 transition-colors border-r border-slate-200 whitespace-nowrap" onClick={() => requestSort('ticker')}>
+                  <div className="flex items-center justify-center gap-1">
+                    Mã CK <SortIcon columnKey="ticker" />
+                  </div>
+                </th>
                 <th className="p-4 text-right cursor-pointer hover:bg-emerald-100 transition-colors border-r border-slate-200 whitespace-nowrap" onClick={() => requestSort('volume')}>SL <SortIcon columnKey="volume" /></th>
                 <th className="p-4 text-right cursor-pointer hover:bg-emerald-100 transition-colors border-r border-slate-200 whitespace-nowrap" onClick={() => requestSort('avg_price')}>Giá TB <SortIcon columnKey="avg_price" /></th>
-                <th className="p-4 text-right cursor-pointer hover:bg-emerald-100 transition-colors border-r border-slate-200 whitespace-nowrap" onClick={() => requestSort('current_price')}>Giá TT <SortIcon columnKey="current_price" /></th>
-                <th className="p-4 text-right cursor-pointer hover:bg-emerald-100 transition-colors border-r border-slate-200 whitespace-nowrap" onClick={() => requestSort('current_value')}>Giá trị <SortIcon columnKey="current_value" /></th>
-                <th className="p-4 text-right cursor-pointer hover:bg-emerald-100 transition-colors border-r border-slate-200 whitespace-nowrap" onClick={() => requestSort('profit_loss')}>Lãi/Lỗ <SortIcon columnKey="profit_loss" /></th>
-                <th className="p-4 text-center w-32 cursor-pointer hover:bg-emerald-100 transition-colors border-r border-slate-200 whitespace-nowrap" onClick={() => requestSort('weight')}>Tỷ trọng <SortIcon columnKey="weight" /></th>
-                <th className="p-4 text-center border-r border-slate-200 whitespace-nowrap cursor-pointer hover:bg-emerald-100 transition-colors" onClick={() => requestSort('trending')}>
-                  <div>Xu hướng <SortIcon columnKey="trending" /></div>
-                  <div className="text-[10px] text-slate-800 font-normal">(5 phiên)</div>
+                <th className="p-4 text-center cursor-pointer hover:bg-emerald-100 transition-colors border-r border-slate-200 whitespace-nowrap" onClick={() => requestSort('current_price')}>
+                  <div className="flex items-center justify-center gap-1">
+                    Giá TT <SortIcon columnKey="current_price" />
+                  </div>
                 </th>
-                <th className="p-4 text-right cursor-pointer hover:bg-emerald-100 transition-colors border-r border-slate-200 whitespace-nowrap" onClick={() => requestSort('today_change_percent')}>Hôm nay <SortIcon columnKey="today_change_percent" /></th>
+                <th className="p-4 text-right cursor-pointer hover:bg-emerald-100 transition-colors border-r border-slate-200 whitespace-nowrap" onClick={() => requestSort('current_value')}>Giá trị <SortIcon columnKey="current_value" /></th>
+                <th className="py-4 pl-0 pr-2 w-[8%] text-center cursor-pointer hover:bg-emerald-100 transition-colors border-r border-slate-200 whitespace-nowrap" onClick={() => requestSort('profit_loss')}>
+                  <div className="flex items-center justify-center gap-1">
+                    Lãi/Lỗ <SortIcon columnKey="profit_loss" />
+                  </div>
+                </th>
+                <th className="p-4 text-center w-32 cursor-pointer hover:bg-emerald-100 transition-colors border-r border-slate-200 whitespace-nowrap" onClick={() => requestSort('weight')}>Tỷ trọng <SortIcon columnKey="weight" /></th>
+                <th className="p-4 text-center border-r border-slate-200 whitespace-nowrap cursor-pointer bg-amber-100/60 hover:bg-amber-100/80 transition-colors" onClick={() => requestSort('trending')}>
+                  <div className="flex items-center justify-center gap-1 text-[13px] font-bold">
+                    XU HƯỚNG <SortIcon columnKey="trending" />
+                  </div>
+                </th>
+                <th className="p-4 text-center cursor-pointer hover:bg-emerald-100 transition-colors border-r border-slate-200 whitespace-nowrap" onClick={() => requestSort('today_change_percent')}>
+                  <div className="flex items-center justify-center gap-1">
+                    Hôm nay <SortIcon columnKey="today_change_percent" />
+                  </div>
+                </th>
                 <th className="p-4 text-center whitespace-nowrap">Thao tác</th>
               </tr>
             </thead>
-            <tbody className="">
+            <tbody>
               {sortedItems.map((s) => {
                 const isProfit = s.profit_loss >= 0;
-                const allocation = data.total_stock_value > 0 ? (s.current_value / data.total_stock_value) * 100 : 0;
+                const allocation = data?.total_stock_value > 0 ? (s.current_value / data.total_stock_value) * 100 : 0;
 
-                // Unified 5-color theme logic
                 const getTheme = () => {
                   const p = s.current_price;
                   const ref = s.ref_price;
                   const ceil = s.ceiling_price;
                   const floor = s.floor_price;
 
-                  if (p >= ceil && ceil > 0) return {
-                    text: "text-purple-500",
-                    bg: "bg-purple-500",
-                    badge: "text-purple-600 bg-purple-50"
-                  };
-                  if (p <= floor && floor > 0) return {
-                    text: "text-cyan-400",
-                    bg: "bg-cyan-400",
-                    badge: "text-cyan-600 bg-cyan-50"
-                  };
-                  if (p > ref && ref > 0) return {
-                    text: "text-emerald-500",
-                    bg: "bg-emerald-500",
-                    badge: "text-emerald-600 bg-emerald-50"
-                  };
-                  if (p < ref && ref > 0) return {
-                    text: "text-rose-500",
-                    bg: "bg-rose-500",
-                    badge: "text-rose-600 bg-rose-50"
-                  };
-                  return {
-                    text: "text-amber-500",
-                    bg: "bg-amber-500",
-                    badge: "text-amber-600 bg-amber-50"
-                  };
+                  if (p >= ceil && ceil > 0) return { text: "text-purple-500", bg: "bg-purple-500", badge: "text-purple-600 bg-purple-50" };
+                  if (p <= floor && floor > 0) return { text: "text-cyan-400", bg: "bg-cyan-400", badge: "text-cyan-600 bg-cyan-50" };
+                  if (p > ref && ref > 0) return { text: "text-emerald-500", bg: "bg-emerald-500", badge: "text-emerald-600 bg-emerald-50" };
+                  if (p < ref && ref > 0) return { text: "text-rose-500", bg: "bg-rose-500", badge: "text-rose-600 bg-rose-50" };
+                  return { text: "text-amber-500", bg: "bg-amber-500", badge: "text-amber-600 bg-amber-50" };
                 };
 
                 const theme = getTheme();
@@ -208,7 +200,6 @@ export default function StockTable({ data, buyForm, setBuyForm, setSellForm, set
                     <td className="p-4 text-right text-sm font-bold text-slate-700 border-r border-slate-200 last:border-r-0">
                       {Math.floor(s.current_value).toLocaleString('en-US')}
                     </td>
-
                     <td className="p-4 text-center border-r border-slate-200 last:border-r-0">
                       <span className={`text-base font-medium ${isProfit ? 'text-emerald-600' : 'text-rose-500'}`}>
                         {Math.abs(Math.floor(s.profit_loss)).toLocaleString('en-US')}
@@ -230,7 +221,6 @@ export default function StockTable({ data, buyForm, setBuyForm, setSellForm, set
                         {s.today_change_percent > 0 ? "+" : ""}{s.today_change_percent.toFixed(2)}%
                       </div>
                     </td>
-
                     <td className="p-4">
                       <div className="flex justify-center gap-2">
                         <button onClick={() => { setBuyForm({ ...buyForm, ticker: s.ticker }); setShowBuy(true) }} className="p-2 bg-emerald-50 text-emerald-600 rounded-lg hover:bg-emerald-600 hover:text-white transition-all shadow-sm"><PlusCircle size={21} /></button>
@@ -244,11 +234,15 @@ export default function StockTable({ data, buyForm, setBuyForm, setSellForm, set
             <tfoot className="bg-white border-t border-slate-300">
               <tr>
                 <td colSpan={5} className="p-5 pl-6 text-slate-700 text-[20px] font-medium tracking-wide">Tổng giá trị danh mục</td>
-                <td colSpan={4} className="p-5 pr-6 text-right">
-                  <div className="flex items-baseline justify-end gap-3">
-                    <span className="text-sm font-bold text-emerald-600 bg-emerald-50 px-3 py-1 rounded-full whitespace-nowrap">
-                      Hiệu suất đầu tư: {data?.total_nav > 0 ? ((data.total_stock_value / data.total_nav) * 100).toFixed(2) : 0}%
+                <td className="p-5 text-right">
+                  {navHistory?.summary?.total_performance_pct !== undefined && (
+                    <span className={`text-base font-medium ${navHistory.summary.total_performance_pct >= 0 ? 'text-emerald-600' : 'text-rose-600'}`}>
+                      {navHistory.summary.total_performance_pct >= 0 ? '+' : ''}{navHistory.summary.total_performance_pct.toFixed(2)}%
                     </span>
+                  )}
+                </td>
+                <td colSpan={4} className="p-5 pr-6 text-right">
+                  <div className="flex items-baseline justify-end gap-1.5">
                     <span className="text-xl font-bold text-slate-900 tracking-tight">{Math.floor(data?.total_stock_value || 0).toLocaleString('en-US')}</span>
                     <span className="text-base font-semibold text-slate-500 lowercase">vnd</span>
                   </div>
