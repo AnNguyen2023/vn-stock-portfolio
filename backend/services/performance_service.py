@@ -306,11 +306,19 @@ def nav_history(db: Session, start_date: date | None = None, end_date: date | No
         })
     
     perf_pct = (total_r_plus_1 - 1) * 100
+    # Calculate visible summary metrics to match the table exactly
+    visible_start_nav = res[-1]["nav"] if res else 0
+    visible_end_nav = res[0]["nav"] if res else 0
+    visible_profit = sum(item["change"] for item in res)
+    
+    # Derive flow to ensure accounting identity: End = Start + Flow + Profit => Flow = End - Start - Profit
+    visible_net_flow = _d(visible_end_nav) - _d(visible_start_nav) - _d(visible_profit)
+
     summary = {
-        "start_nav": res[-1]["nav"] if res else 0,
-        "end_nav": res[0]["nav"] if res else 0,
-        "net_flow": _safe_float(total_net_flow),
-        "total_profit": sum(item["change"] for item in res),
+        "start_nav": visible_start_nav,
+        "end_nav": visible_end_nav,
+        "net_flow": _safe_float(visible_net_flow),
+        "total_profit": _safe_float(visible_profit),
         "total_performance_pct": _safe_float(perf_pct)
     }
 

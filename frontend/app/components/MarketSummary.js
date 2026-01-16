@@ -40,12 +40,13 @@ export default function MarketSummary() {
         if (!indexData) return null;
 
         const isPositive = indexData.change >= 0;
+
         const colorGreen = '#10b981';
         const colorRed = '#f43f5e';
 
         const displayPrice = indexData.price;
         const displayChange = indexData.change;
-        const refPrice = displayPrice - displayChange;
+        const refPrice = indexData.ref_price || (displayPrice - displayChange);
         const hasData = displayPrice > 0;
         const showChart = indexData.sparkline && indexData.sparkline.length > 0;
 
@@ -109,7 +110,7 @@ export default function MarketSummary() {
                         <span className="text-[10px] font-black text-slate-500 uppercase tracking-widest leading-tight">Khối lượng</span>
                         <span className="text-[14.5px] font-bold text-slate-900 tabular-nums">
                             {indexData.volume > 0
-                                ? `${Math.floor(indexData.volume / 1000).toLocaleString('en-US')}M CP`
+                                ? `${(indexData.volume / 1000000).toLocaleString('en-US', { minimumFractionDigits: 1, maximumFractionDigits: 1 })}M CP`
                                 : '-- CP'}
                         </span>
                     </div>
