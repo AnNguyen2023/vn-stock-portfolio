@@ -301,7 +301,8 @@ def nav_history(db: Session, start_date: date | None = None, end_date: date | No
     res: List[Dict[str, Any]] = []
     total_r_plus_1 = 1.0
     total_net_flow = Decimal("0")
-    
+    cached_start_nav = None  # Optimize: Store Start NAV from loop to avoid redundant query
+
     for i in range(len(snaps)):
         curr = snaps[i]
         if start_date and curr.date < start_date:
@@ -334,6 +335,7 @@ def nav_history(db: Session, start_date: date | None = None, end_date: date | No
                 # If we are just slicing (limit=30), we ignore the return of the boundary day relative to outside.
                 pct = 0.0
                 change = curr_nav - prev_nav - net_flow
+                cached_start_nav = prev_nav # Cache for summary
             else:
                 # GENESIS: No predecessor exists at all. This is Day 1.
                 # Start NAV = 0.
@@ -347,6 +349,7 @@ def nav_history(db: Session, start_date: date | None = None, end_date: date | No
                 
                 total_net_flow += net_flow
                 change = profit # For Day 1, Change = Profit (NAV - Flow)
+                cached_start_nav = Decimal("0") # Cache for summary
 
         res.append({
             "date": curr.date.strftime("%Y-%m-%d"),
@@ -364,14 +367,11 @@ def nav_history(db: Session, start_date: date | None = None, end_date: date | No
     visible_profit = sum(item["change"] for item in res)
     
     # Determine correct Start NAV relative to the window
-    # If the oldest visible snapshot has a predecessor, Start NAV is that predecessor's NAV.
-    # If it has no predecessor (Genesis), Start NAV is 0.
-    oldest_date = datetime.strptime(res[-1]["date"], "%Y-%m-%d").date()
-    prev_db = db.query(models.DailySnapshot).filter(models.DailySnapshot.date < oldest_date).order_by(desc(models.DailySnapshot.date)).first()
-    
-    if prev_db:
-        visible_start_nav = _d(prev_db.total_nav)
+    # Recalculated from loop (cached_start_nav) to avoid redundant DB query
+    if cached_start_nav is not None:
+         visible_start_nav = cached_start_nav
     else:
+        # Fallback (should not happen if loop ran)
         visible_start_nav = 0
 
     # Derive Net Flow from accounting identity: End = Start + Flow + Profit
