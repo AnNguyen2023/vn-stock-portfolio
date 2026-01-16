@@ -59,7 +59,7 @@ export default function MarketSummary() {
         }
 
         return (
-            <div className="flex-1 bg-slate-50 border border-slate-200 rounded-xl p-3 shadow-sm relative overflow-hidden flex flex-col group min-h-[176px] hover:shadow-md transition-shadow">
+            <div className="flex-1 bg-slate-50 border border-slate-200 rounded-xl p-2.5 shadow-sm relative overflow-hidden flex flex-col group min-h-[176px] hover:shadow-md transition-shadow">
                 {/* Header - Index Name & Live Badge */}
                 <div className="flex items-center gap-2 mb-2 relative z-10 px-1">
                     <h4 className="text-[10px] font-black text-slate-400 uppercase tracking-[0.2em]">{indexData.index}</h4>
@@ -70,14 +70,14 @@ export default function MarketSummary() {
                 </div>
 
                 {/* Chart Area */}
-                <div className="flex-1 -mx-3 mb-2 min-h-[80px] relative bg-white/50 overflow-hidden">
+                <div className="flex-1 -mx-3 mb-0.5 min-h-[95px] relative bg-white/50 overflow-hidden">
                     {showChart ? (
                         <LightweightChart
                             data={indexData.sparkline}
                             refPrice={refPrice}
                             isPositive={isPositive}
                             ticker={indexData.index}
-                            height={100}
+                            height={115}
                         />
                     ) : (
                         <div className="h-full flex items-center justify-center text-slate-300 text-[10px] font-black uppercase tracking-widest">No Chart Data</div>
@@ -85,7 +85,7 @@ export default function MarketSummary() {
                 </div>
 
                 {/* Price & Change Info - Below Chart */}
-                <div className="flex justify-between items-start mb-2 relative z-10 px-1 border-t border-slate-100 pt-2">
+                <div className="flex justify-between items-start mb-0.5 relative z-10 px-1 border-t border-slate-100 pt-0.5">
                     <div className="flex flex-col">
                         <div className="flex items-baseline gap-2">
                             <span className={`text-[25px] font-bold tabular-nums tracking-tight ${isPositive ? 'text-emerald-600' : 'text-rose-600'}`}>
@@ -105,7 +105,7 @@ export default function MarketSummary() {
                 </div>
 
                 {/* Footer - Volume & Liquidity */}
-                <div className="flex items-center justify-between text-[10px] text-slate-500 relative z-10 border-t border-slate-100 pt-2 px-1">
+                <div className="flex items-center justify-between text-[10px] text-slate-500 relative z-10 border-t border-slate-100 pt-0.5 px-1">
                     <div className="flex flex-col">
                         <span className="text-[10px] font-black text-slate-500 uppercase tracking-widest leading-tight">Khối lượng</span>
                         <span className="text-[14.5px] font-bold text-slate-900 tabular-nums">
@@ -117,7 +117,7 @@ export default function MarketSummary() {
 
                     <div className="flex flex-col items-end">
                         <span className="text-[10px] font-black text-slate-500 uppercase tracking-widest leading-tight">Thanh khoản</span>
-                        <span className="text-[14.5px] font-bold text-slate-900 tabular-nums">
+                        <span className="text-[16px] font-bold text-orange-600 tabular-nums">
                             {indexData.value > 0
                                 ? `${indexData.value.toLocaleString('en-US', { minimumFractionDigits: 3, maximumFractionDigits: 3 })} Tỷ`
                                 : '-- Tỷ'}

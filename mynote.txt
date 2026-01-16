@@ -95,6 +95,9 @@ uvicorn main:app --reload --port 8001
 
 http://localhost:8001
 
+git checkout -b 'new-main'---> Tao branch
+
+Kiểm tra lại tính năng: Chạy thử luồng người dùng (User Flow) để đảm bảo mọi thứ trơn tru
 
 Mở trình duyệt:
 

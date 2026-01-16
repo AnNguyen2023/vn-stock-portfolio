@@ -330,12 +330,44 @@ def nav_history(db: Session, start_date: date | None = None, end_date: date | No
     
     perf_pct = (total_r_plus_1 - 1) * 100
     # Calculate visible summary metrics to match the table exactly
-    visible_start_nav = res[-1]["nav"] if res else 0
-    visible_end_nav = res[0]["nav"] if res else 0
+    if not res:
+        return {"history": [], "summary": {"start_nav": 0, "end_nav": 0, "net_flow": 0, "total_profit": 0, "total_performance_pct": 0}}
+
+    visible_start_nav = res[-1]["nav"]
+    visible_end_nav = res[0]["nav"]
     visible_profit = sum(item["change"] for item in res)
-    
-    # Derive flow to ensure accounting identity: End = Start + Flow + Profit => Flow = End - Start - Profit
     visible_net_flow = _d(visible_end_nav) - _d(visible_start_nav) - _d(visible_profit)
+    
+    # REFINEMENT: Check if we are viewing the full history (from the beginning)
+    # If the oldest visible snapshot has NO predecessor, we should calculate Lifetime Performance
+    # properly instead of just showing the window's change (which might be 0 for a single day).
+    oldest_snap_date = datetime.strptime(res[-1]["date"], "%Y-%m-%d").date()
+    # Check if any snapshot exists before this one
+    has_predecessor = db.query(models.DailySnapshot).filter(models.DailySnapshot.date < oldest_snap_date).first()
+
+    if not has_predecessor:
+        # We are at the start of time. Calculate Lifetime metrics.
+        # Flow = All cash flow up to end date
+        latest_date = datetime.strptime(res[0]["date"], "%Y-%m-%d").date()
+        lifetime_net_flow = _net_cash_flow(db, start=date(2000, 1, 1), end=latest_date)
+        
+        # Profit = EndNAV - NetFlow
+        lifetime_profit = _d(visible_end_nav) - lifetime_net_flow
+        
+        # Performance % = Profit / NetFlow
+        if lifetime_net_flow > 0:
+            perf_pct = (lifetime_profit / lifetime_net_flow) * 100
+        else:
+            perf_pct = 0.0
+            
+        # Update summary to reflect Lifetime
+        visible_profit = lifetime_profit
+        visible_net_flow = lifetime_net_flow
+        # For "Start NAV", conceptually it's 0, but for the table display context, 
+        # showing 0 might confuse if the user treats the first row as "Start".
+        # However, to satisfy "End = Start + Flow + Profit" with Start=0:
+        # End (2.1B) = 0 + 1.7B (Flow) + 0.4B (Profit). This balances.
+        visible_start_nav = 0 
 
     summary = {
         "start_nav": visible_start_nav,
