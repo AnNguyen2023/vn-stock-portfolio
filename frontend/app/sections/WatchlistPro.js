@@ -357,12 +357,12 @@ export default function WatchlistPro() {
                         >
                             <button
                                 onClick={() => setActiveWatchlistId(wl.id)}
-                                className={`flex items-center gap-2 px-5 py-2.5 rounded-xl text-sm font-bold transition-all border-2 cursor-grab active:cursor-grabbing ${isActive
+                                className={`flex items-center gap-2 px-4 py-2 rounded-xl text-base font-medium transition-all border-2 cursor-grab active:cursor-grabbing ${isActive
                                     ? `${color.active} text-white shadow-lg`
                                     : `bg-white text-slate-400 border-slate-100 ${color.hover}`
                                     }`}
                             >
-                                <div className={`w-2 h-2 rounded-full ${isActive ? "bg-white animate-pulse" : color.dot}`} />
+                                <div className={`w-1.5 h-1.5 rounded-full ${isActive ? "bg-white animate-pulse" : color.dot}`} />
                                 {wl.name}
                                 <span className={`ml-1 px-1.5 py-0.5 rounded-md text-xs font-bold ${isActive ? color.badge : "bg-slate-100 text-slate-500"}`}>
                                     {wl.tickers?.length || 0}

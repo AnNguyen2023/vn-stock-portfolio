@@ -15,7 +15,7 @@ export default function SummaryCard({ title, value, icon, color, bg, isPrivate }
           {/* Tiêu đề nhỏ bên trên - đậm và rõ nét hơn */}
           <p className="text-base font-medium text-slate-600 uppercase tracking-tight mb-1">{title}</p>
           {/* Con số tiền chính - Bold mãnh (extrabold) và sắc nét */}
-          <h3 className={`text-[25px] font-bold tracking-tight ${color} transition-all duration-500 ${isPrivate ? 'blur-md select-none opacity-20' : ''}`}>
+          <h3 className={`text-[21px] font-bold tracking-tight ${color} transition-all duration-500 ${isPrivate ? 'blur-md select-none opacity-20' : ''}`}>
             {isPrivate ? '8,888,888,888' : formatted}
             <span className="text-[11px] font-extrabold text-slate-400 ml-1.5 uppercase tracking-wider">VND</span>
           </h3>

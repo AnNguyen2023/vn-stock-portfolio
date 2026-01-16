@@ -231,7 +231,7 @@ export default function Dashboard() {
               <button
                 key={tab}
                 onClick={() => setActiveMainTab(tab)}
-                className={`px-6 py-2.5 rounded-xl text-xs font-black uppercase transition-all ${activeMainTab === tab ? "bg-white text-emerald-600 shadow-sm" : "text-slate-400 hover:text-slate-600"}`}
+                className={`px-6 py-2.5 rounded-xl text-[17px] font-medium uppercase tracking-tight transition-all ${activeMainTab === tab ? "bg-white text-emerald-600 shadow-sm" : "text-slate-400 hover:text-slate-600"}`}
               >
                 {tab === 'watchlist' ? 'Watchlist Pro' : tab === 'growth' ? 'Hiệu suất tăng trưởng' : 'TITAN Scanner'}
               </button>
@@ -248,7 +248,7 @@ export default function Dashboard() {
         </div>
 
         {/* TABLE */}
-        <StockTable {...{ data, buyForm, setBuyForm, sellForm, setSellForm, setShowBuy, setShowSell, lastUpdated: portfolioLastUpdated }} />
+        <StockTable {...{ data, buyForm, setBuyForm, sellForm, setSellForm, setShowBuy, setShowSell, lastUpdated: portfolioLastUpdated, navHistory }} />
 
         {/* HISTORY */}
         <HistoryTabs {...{ activeHistoryTab, setActiveHistoryTab, startDate, setStartDate, endDate, setEndDate, handleCalculateProfit, data, PIE_COLORS, historicalProfit, navHistory, logs, setEditingNote, setShowNoteModal }} />
