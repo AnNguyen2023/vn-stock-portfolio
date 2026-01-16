@@ -307,8 +307,8 @@ def nav_history(db: Session, start_date: date | None = None, end_date: date | No
     
     perf_pct = (total_r_plus_1 - 1) * 100
     summary = {
-        "start_nav": _safe_float(snaps[-1].total_nav) if snaps else 0,
-        "end_nav": _safe_float(snaps[0].total_nav) if snaps else 0,
+        "start_nav": res[-1]["nav"] if res else 0,
+        "end_nav": res[0]["nav"] if res else 0,
         "net_flow": _safe_float(total_net_flow),
         "total_profit": sum(item["change"] for item in res),
         "total_performance_pct": _safe_float(perf_pct)

@@ -4,6 +4,8 @@ import { List, PlusCircle, MinusCircle, TrendingUp, TrendingDown, Minus, ArrowUp
 import StatusBadge from '../components/StatusBadge';
 import StockTrendingCell from '../components/StockTrendingCell';
 
+import { toast } from 'sonner';
+
 export default function StockTable({ data, buyForm, setBuyForm, setSellForm, setShowBuy, setShowSell }) {
   const [sortConfig, setSortConfig] = useState({ key: null, direction: 'asc' });
   const [isExpanded, setIsExpanded] = useState(false);
@@ -89,6 +91,12 @@ export default function StockTable({ data, buyForm, setBuyForm, setSellForm, set
         </div>
         {/* Action Buttons */}
         <div className="flex items-center gap-2">
+          <button
+            onClick={() => toast.info("Tính năng đang phát triển", { description: "Chức năng quản lý cổ tức sẽ sớm ra mắt!" })}
+            className="px-4 py-2 bg-sky-500 text-white text-sm font-bold rounded-xl hover:bg-sky-600 transition-all shadow-sm active:scale-95"
+          >
+            Cổ tức
+          </button>
           <button
             onClick={() => setShowBuy(true)}
             className="px-4 py-2 bg-rose-500 text-white text-sm font-bold rounded-xl hover:bg-rose-600 transition-all shadow-sm active:scale-95"
