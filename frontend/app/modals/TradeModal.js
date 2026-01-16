@@ -42,7 +42,7 @@ export default function TradeModal({
             </div>
             <div className="flex gap-3 pt-2">
               <button type="button" onClick={closeModals} className="flex-1 py-4 bg-slate-100 text-slate-500 font-medium rounded-2xl text-sm uppercase hover:bg-slate-200">Hủy</button>
-              <button type="submit" className="flex-1 py-4 bg-rose-500 text-white font-medium rounded-2xl text-sm uppercase shadow-lg shadow-rose-100 active:scale-95 transition-all">Xác nhận mua</button>
+              <button type="submit" className="flex-1 py-4 bg-rose-500 text-white font-medium rounded-2xl text-sm uppercase shadow-lg shadow-rose-100 active:scale-95 transition-all">Xác nhận</button>
             </div>
           </form>
         </div>

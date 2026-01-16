@@ -216,9 +216,9 @@ export default function Dashboard() {
 
         {/* SUMMARY */}
         <div className="grid grid-cols-1 md:grid-cols-3 gap-4 mb-6">
-          <SummaryCard isPrivate={isPrivate} title="Vốn thực có (NAV)" value={Math.floor(data?.total_nav || 0)} icon={<PieChartIcon size={26} />} color="text-purple-600" bg="bg-purple-50" />
-          <SummaryCard isPrivate={isPrivate} title="Tiền mặt" value={Math.floor(data?.cash_balance || 0)} icon={<Wallet size={26} />} color="text-emerald-600" bg="bg-emerald-50" />
-          <SummaryCard isPrivate={isPrivate} title="Giá trị cổ phiếu" value={Math.floor(data?.total_stock_value || 0)} icon={<TrendingUp size={26} />} color="text-fuchsia-600" bg="bg-fuchsia-50" />
+          <SummaryCard isPrivate={isPrivate} title="Vốn thực có (NAV)" value={Math.floor(data?.total_nav || 0)} icon={<PieChartIcon size={26} />} color="text-emerald-700" bg="bg-emerald-50" />
+          <SummaryCard isPrivate={isPrivate} title="Tiền mặt" value={Math.floor(data?.cash_balance || 0)} icon={<Wallet size={26} />} color="text-teal-600" bg="bg-teal-50" />
+          <SummaryCard isPrivate={isPrivate} title="Giá trị cổ phiếu" value={Math.floor(data?.total_stock_value || 0)} icon={<TrendingUp size={26} />} color="text-purple-600" bg="bg-purple-50" />
         </div>
 
         {/* Market Summary */}

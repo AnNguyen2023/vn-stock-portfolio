@@ -20,7 +20,7 @@ export default function CashModal({
         {showWithdraw && (
           <div className="mb-6 p-4 bg-purple-50 border border-purple-100 rounded-2xl">
             <p className="text-xs text-purple-500 font-medium uppercase tracking-wider mb-1">Số dư khả dụng</p>
-            <p className="text-2xl font-bold text-purple-700">
+            <p className="text-[1.35rem] font-medium text-purple-700">
               {Math.floor(availableBalance).toLocaleString('en-US')} <span className="text-sm font-normal text-purple-400">VND</span>
             </p>
           </div>
@@ -30,7 +30,6 @@ export default function CashModal({
           <div>
             <label className="text-sm font-medium text-slate-600 uppercase tracking-widest ml-1 mb-2 block">
               Số tiền (VND)
-              {!showDeposit && <span className="text-purple-500 ml-2 normal-case tracking-normal">(Khả dụng: {cash?.toLocaleString('en-US')} VND)</span>}
             </label>
             <div className="relative flex items-center">
               <input type="text" required autoFocus className="w-full p-4 bg-slate-50 border border-slate-100 rounded-2xl text-2xl font-bold outline-none focus:ring-4 focus:ring-emerald-100 transition-all" value={amount} onChange={handleAmountChange} placeholder="0" />
