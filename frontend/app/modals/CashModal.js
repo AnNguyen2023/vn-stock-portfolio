@@ -2,9 +2,12 @@
 
 export default function CashModal({
   showDeposit, showWithdraw, amount, setAmount, description, setDescription,
-  handleAmountChange, handleDeposit, handleWithdraw, closeModals, availableBalance = 0
+  handleAmountChange, handleDeposit, handleWithdraw, closeModals, cash = 0
 }) {
   if (!showDeposit && !showWithdraw) return null;
+
+  // Alias cash to availableBalance for clarity in the UI logic
+  const availableBalance = cash;
 
   return (
     <div className="fixed inset-0 bg-slate-900/60 flex items-center justify-center p-4 z-[100] backdrop-blur-sm animate-in fade-in duration-300">
@@ -25,7 +28,10 @@ export default function CashModal({
 
         <form onSubmit={showDeposit ? handleDeposit : handleWithdraw} className="space-y-6">
           <div>
-            <label className="text-sm font-medium text-slate-600 uppercase tracking-widest ml-1 mb-2 block">Số tiền (VND)</label>
+            <label className="text-sm font-medium text-slate-600 uppercase tracking-widest ml-1 mb-2 block">
+              Số tiền (VND)
+              {!showDeposit && <span className="text-purple-500 ml-2 normal-case tracking-normal">(Khả dụng: {cash?.toLocaleString('en-US')} VND)</span>}
+            </label>
             <div className="relative flex items-center">
               <input type="text" required autoFocus className="w-full p-4 bg-slate-50 border border-slate-100 rounded-2xl text-2xl font-bold outline-none focus:ring-4 focus:ring-emerald-100 transition-all" value={amount} onChange={handleAmountChange} placeholder="0" />
               <span className="absolute right-4 text-slate-600 font-bold text-sm">VND</span>
