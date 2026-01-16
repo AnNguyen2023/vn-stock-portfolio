@@ -527,8 +527,11 @@ def _process_market_row(row: Any, index_name: str, db: Session, vps_data: dict =
         except Exception as se:
             logger.debug(f"Intraday sparkline failed for {index_name}: {se}")
 
-        if has_vps or match_price > 0:
-            # Persistent Intraday Safety Net: Update database for today
+        # Persistent Intraday Safety Net: Update database for today
+        # CRITICAL: Always save VNINDEX for future calculations, save VN30 if has data
+        should_persist = (index_name == "VNINDEX") or (has_vps or match_price > 0)
+        
+        if should_persist and price > 0:
             try:
                 today_d = date.today()
                 existing = db.query(models.HistoricalPrice).filter(
@@ -550,6 +553,7 @@ def _process_market_row(row: Any, index_name: str, db: Session, vps_data: dict =
                     existing.volume = Decimal(str(volume))
                     existing.value = Decimal(str(value))
                 db.commit()
+                logger.info(f"[DB] Saved {index_name} to HistoricalPrice: {price:.2f}")
             except Exception as db_e:
                 db.rollback()
                 logger.debug(f"Persistence failed for {index_name}: {db_e}")
@@ -622,8 +626,8 @@ def _get_market_fallback(db: Session, indices: list[str]) -> list[dict]:
     return fallback_results
 
 def get_market_summary_service(db: Session) -> list[dict]:
-    """Fetch market summary (VNINDEX, VN30, HNX, UPCOM, HNX30)."""
-    indices = ["VNINDEX", "VN30", "HNX30"]
+    """Fetch market summary (VNINDEX, VN30)."""
+    indices = ["VNINDEX", "VN30"]
     cache_key = "market_summary_full_v10"
     
     # 0. Check cache

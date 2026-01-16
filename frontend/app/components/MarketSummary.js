@@ -59,35 +59,17 @@ export default function MarketSummary() {
 
         return (
             <div className="flex-1 bg-slate-50 border border-slate-200 rounded-xl p-3 shadow-sm relative overflow-hidden flex flex-col group min-h-[220px] hover:shadow-md transition-shadow">
-                {/* Header Info */}
-                <div className="flex justify-between items-start mb-1 relative z-10 px-1 pt-1">
-                    <div className="flex flex-col">
-                        <div className="flex items-center gap-2 mb-1">
-                            <h4 className="text-[10px] font-black text-slate-400 uppercase tracking-[0.2em]">{indexData.index}</h4>
-                            <div className="flex items-center gap-1 bg-emerald-50 px-1.5 py-0.5 rounded text-[8px] font-bold text-emerald-600 animate-pulse border border-emerald-100">
-                                <Activity size={8} />
-                                LIVE
-                            </div>
-                        </div>
-                        <div className="flex items-baseline gap-2">
-                            <span className={`text-[25px] font-bold tabular-nums tracking-tight ${isPositive ? 'text-emerald-600' : 'text-rose-600'}`}>
-                                {displayPrice?.toLocaleString('en-US', { minimumFractionDigits: 2, maximumFractionDigits: 2 })}
-                            </span>
-                        </div>
-                    </div>
-                    <div className="flex flex-col items-end pt-1">
-                        <span className={`text-base font-bold tabular-nums flex items-center gap-1 ${isPositive ? 'text-emerald-600' : 'text-rose-600'}`}>
-                            {isPositive ? <TrendingUp size={16} strokeWidth={3} /> : <TrendingDown size={16} strokeWidth={3} />}
-                            {isPositive ? '+' : ''}{displayChange?.toLocaleString('en-US', { minimumFractionDigits: 2, maximumFractionDigits: 2 })}
-                        </span>
-                        <span className={`text-[13px] font-bold tabular-nums ${isPositive ? 'text-emerald-500' : 'text-rose-500'}`}>
-                            {indexData.change_pct?.toLocaleString('en-US', { minimumFractionDigits: 2, maximumFractionDigits: 2 })}%
-                        </span>
+                {/* Header - Index Name & Live Badge */}
+                <div className="flex items-center gap-2 mb-2 relative z-10 px-1">
+                    <h4 className="text-[10px] font-black text-slate-400 uppercase tracking-[0.2em]">{indexData.index}</h4>
+                    <div className="flex items-center gap-1 bg-emerald-50 px-1.5 py-0.5 rounded text-[8px] font-bold text-emerald-600 animate-pulse border border-emerald-100">
+                        <Activity size={8} />
+                        LIVE
                     </div>
                 </div>
 
                 {/* Chart Area */}
-                <div className="flex-1 -mx-3 my-2 min-h-[100px] relative bg-white/50 overflow-hidden">
+                <div className="flex-1 -mx-3 mb-2 min-h-[100px] relative bg-white/50 overflow-hidden">
                     {showChart ? (
                         <LightweightChart
                             data={indexData.sparkline}
@@ -101,7 +83,27 @@ export default function MarketSummary() {
                     )}
                 </div>
 
-                {/* Footer Info */}
+                {/* Price & Change Info - Below Chart */}
+                <div className="flex justify-between items-start mb-2 relative z-10 px-1 border-t border-slate-100 pt-2">
+                    <div className="flex flex-col">
+                        <div className="flex items-baseline gap-2">
+                            <span className={`text-[25px] font-bold tabular-nums tracking-tight ${isPositive ? 'text-emerald-600' : 'text-rose-600'}`}>
+                                {displayPrice?.toLocaleString('en-US', { minimumFractionDigits: 2, maximumFractionDigits: 2 })}
+                            </span>
+                        </div>
+                    </div>
+                    <div className="flex flex-col items-end">
+                        <span className={`text-base font-bold tabular-nums flex items-center gap-1 ${isPositive ? 'text-emerald-600' : 'text-rose-600'}`}>
+                            {isPositive ? <TrendingUp size={16} strokeWidth={3} /> : <TrendingDown size={16} strokeWidth={3} />}
+                            {isPositive ? '+' : ''}{displayChange?.toLocaleString('en-US', { minimumFractionDigits: 2, maximumFractionDigits: 2 })}
+                        </span>
+                        <span className={`text-[13px] font-bold tabular-nums ${isPositive ? 'text-emerald-500' : 'text-rose-500'}`}>
+                            {indexData.change_pct?.toLocaleString('en-US', { minimumFractionDigits: 2, maximumFractionDigits: 2 })}%
+                        </span>
+                    </div>
+                </div>
+
+                {/* Footer - Volume & Liquidity */}
                 <div className="flex items-center justify-between text-[10px] text-slate-500 relative z-10 border-t border-slate-100 pt-2 px-1">
                     <div className="flex flex-col">
                         <span className="text-[10px] font-black text-slate-500 uppercase tracking-widest leading-tight">Khối lượng</span>

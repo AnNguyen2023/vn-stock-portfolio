@@ -176,20 +176,20 @@ export default function StockTable({ data, buyForm, setBuyForm, setSellForm, set
                     </td>
                     <td className="p-4 text-right font-bold text-slate-700 text-sm border-r border-slate-200 last:border-r-0">{s.volume.toLocaleString('en-US')}</td>
                     <td className="p-4 text-right text-sm font-medium text-slate-500 border-r border-slate-200 last:border-r-0">
-                      <span className="tabular-nums">{(s.avg_price * 1000).toLocaleString('en-US')} <span className="text-[10px] text-slate-400 font-bold ml-1">đ</span></span>
+                      <span className="tabular-nums">{(s.avg_price * 1000).toLocaleString('en-US')}</span>
                     </td>
                     <td className="p-4 text-right text-sm border-r border-slate-200 last:border-r-0">
-                      <div className={`font-bold tabular-nums ${theme.text}`}>{(s.current_price * 1000).toLocaleString('en-US')} <span className="text-[10px] opacity-60 ml-0.5">đ</span></div>
+                      <div className={`font-bold tabular-nums ${theme.text}`}>{(s.current_price * 1000).toLocaleString('en-US')}</div>
                     </td>
                     <td className="p-4 text-right text-sm font-bold text-slate-700 border-r border-slate-200 last:border-r-0">
-                      {Math.floor(s.current_value).toLocaleString('en-US')} <span className="text-[10px] text-slate-400 font-bold ml-1">đ</span>
+                      {Math.floor(s.current_value).toLocaleString('en-US')}
                     </td>
 
-                    <td className="p-4 text-right border-r border-slate-200 last:border-r-0">
+                    <td className="p-4 text-center border-r border-slate-200 last:border-r-0">
                       <span className={`text-base font-medium ${isProfit ? 'text-emerald-600' : 'text-rose-500'}`}>
-                        {Math.abs(Math.floor(s.profit_loss)).toLocaleString('en-US')} <span className="text-[10px] font-bold ml-0.5 whitespace-nowrap">đ</span>
+                        {Math.abs(Math.floor(s.profit_loss)).toLocaleString('en-US')}
                       </span>
-                      <div className="flex items-center gap-2">
+                      <div className="flex items-center justify-center gap-2">
                         <StatusBadge value={s.profit_percent.toFixed(2)} showIcon={false} />
                       </div>
                     </td>
@@ -220,13 +220,11 @@ export default function StockTable({ data, buyForm, setBuyForm, setSellForm, set
             <tfoot className="bg-white border-t border-slate-300">
               <tr>
                 <td colSpan={5} className="p-5 pl-6 text-slate-700 text-[20px] font-medium tracking-wide">Tổng giá trị danh mục</td>
-                <td className="p-5 text-right">
-                  <span className="text-sm font-bold text-emerald-600 bg-emerald-50 px-3 py-1 rounded-full whitespace-nowrap">
-                    ({data?.total_nav > 0 ? ((data.total_stock_value / data.total_nav) * 100).toFixed(2) : 0}% NAV)
-                  </span>
-                </td>
-                <td colSpan={3} className="p-5 pr-6 text-right">
-                  <div className="flex items-baseline justify-end gap-1.5">
+                <td colSpan={4} className="p-5 pr-6 text-right">
+                  <div className="flex items-baseline justify-end gap-3">
+                    <span className="text-sm font-bold text-emerald-600 bg-emerald-50 px-3 py-1 rounded-full whitespace-nowrap">
+                      Hiệu suất đầu tư: {data?.total_nav > 0 ? ((data.total_stock_value / data.total_nav) * 100).toFixed(2) : 0}%
+                    </span>
                     <span className="text-xl font-bold text-slate-900 tracking-tight">{Math.floor(data?.total_stock_value || 0).toLocaleString('en-US')}</span>
                     <span className="text-base font-semibold text-slate-500 lowercase">vnd</span>
                   </div>
