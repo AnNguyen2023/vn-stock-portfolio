@@ -233,18 +233,18 @@ export default function StockTable({ data, buyForm, setBuyForm, setSellForm, set
             </tbody>
             <tfoot className="bg-white border-t border-slate-300">
               <tr>
-                <td colSpan={5} className="p-5 pl-6 text-slate-700 text-[20px] font-medium tracking-wide">Tổng giá trị danh mục</td>
-                <td className="p-5 text-right">
+                <td colSpan={7} className="p-5 pr-6 text-right text-slate-700 text-[20px] font-medium tracking-wide">Tổng giá trị danh mục</td>
+                <td className="p-5 text-center">
                   {navHistory?.summary?.total_performance_pct !== undefined && (
-                    <span className={`text-base font-medium ${navHistory.summary.total_performance_pct >= 0 ? 'text-emerald-600' : 'text-rose-600'}`}>
+                    <span className={`text-[18px] font-bold ${navHistory.summary.total_performance_pct >= 0 ? 'text-emerald-600' : 'text-rose-600'}`}>
                       {navHistory.summary.total_performance_pct >= 0 ? '+' : ''}{navHistory.summary.total_performance_pct.toFixed(2)}%
                     </span>
                   )}
                 </td>
-                <td colSpan={4} className="p-5 pr-6 text-right">
+                <td colSpan={2} className="p-5 pr-6 text-right">
                   <div className="flex items-baseline justify-end gap-1.5">
-                    <span className="text-xl font-bold text-slate-900 tracking-tight">{Math.floor(data?.total_stock_value || 0).toLocaleString('en-US')}</span>
-                    <span className="text-base font-semibold text-slate-500 lowercase">vnd</span>
+                    <span className="text-[17.5px] font-bold text-slate-900 tracking-tight">{Math.floor(data?.total_stock_value || 0).toLocaleString('en-US')}</span>
+                    <span className="text-sm font-semibold text-slate-500 lowercase">vnd</span>
                   </div>
                 </td>
               </tr>

@@ -318,8 +318,35 @@ def nav_history(db: Session, start_date: date | None = None, end_date: date | No
             total_net_flow += net_flow
             change = curr_nav - prev_nav - net_flow
         else:
-            change = Decimal("0")
-            pct = 0.0
+            # Viewing the oldest snapshot in this list
+            # We must check if there is a real predecessor in the DB to calculate change/pct
+            prev_db = db.query(models.DailySnapshot).filter(models.DailySnapshot.date < curr.date).order_by(desc(models.DailySnapshot.date)).first()
+            
+            if prev_db:
+                # Predecessor exists outside usage limit, but we can't calculate exact TWR contribution for the *window* 
+                # effectively without fetching it. But for "Change" display, we can calc it.
+                prev_nav = _d(prev_db.total_nav)
+                net_flow = flows_map.get(curr.date, Decimal("0"))
+                # Note: We do NOT add this to total_r_plus_1 because that would imply we are measuring return SINCE prev_db date,
+                # but our window starts at 'curr.date'. TWRR is usually relative to the window start.
+                # HOWEVER, if the user wants "Lifetime TWRR" when viewing Full History, we need to include everything.
+                
+                # If we are just slicing (limit=30), we ignore the return of the boundary day relative to outside.
+                pct = 0.0
+                change = curr_nav - prev_nav - net_flow
+            else:
+                # GENESIS: No predecessor exists at all. This is Day 1.
+                # Start NAV = 0.
+                prev_nav = Decimal("0")
+                net_flow = flows_map.get(curr.date, Decimal("0"))
+                
+                # Calculate return for Day 1
+                profit, pct = _calc_profit_pct(curr_nav, prev_nav, net_flow)
+                if math.isfinite(pct):
+                    total_r_plus_1 *= (1 + pct / 100)
+                
+                total_net_flow += net_flow
+                change = profit # For Day 1, Change = Profit (NAV - Flow)
 
         res.append({
             "date": curr.date.strftime("%Y-%m-%d"),
@@ -329,7 +356,7 @@ def nav_history(db: Session, start_date: date | None = None, end_date: date | No
         })
     
     perf_pct = (total_r_plus_1 - 1) * 100
-    # Calculate visible summary metrics to match the table exactly
+    
     if not res:
         return {"history": [], "summary": {"start_nav": 0, "end_nav": 0, "net_flow": 0, "total_profit": 0, "total_performance_pct": 0}}
 
@@ -338,40 +365,25 @@ def nav_history(db: Session, start_date: date | None = None, end_date: date | No
     visible_profit = sum(item["change"] for item in res)
     visible_net_flow = _d(visible_end_nav) - _d(visible_start_nav) - _d(visible_profit)
     
-    # REFINEMENT: Check if we are viewing the full history (from the beginning)
-    # If the oldest visible snapshot has NO predecessor, we should calculate Lifetime Performance
-    # properly instead of just showing the window's change (which might be 0 for a single day).
-    oldest_snap_date = datetime.strptime(res[-1]["date"], "%Y-%m-%d").date()
-    # Check if any snapshot exists before this one
-    has_predecessor = db.query(models.DailySnapshot).filter(models.DailySnapshot.date < oldest_snap_date).first()
-
-    if not has_predecessor:
-        # We are at the start of time. Calculate Lifetime metrics.
-        # Flow = All cash flow up to end date
-        latest_date = datetime.strptime(res[0]["date"], "%Y-%m-%d").date()
-        lifetime_net_flow = _net_cash_flow(db, start=date(2000, 1, 1), end=latest_date)
-        
-        # Profit = EndNAV - NetFlow
-        lifetime_profit = _d(visible_end_nav) - lifetime_net_flow
-        
-        # Performance % = Profit / NetFlow
-        if lifetime_net_flow > 0:
-            perf_pct = (lifetime_profit / lifetime_net_flow) * 100
-        else:
-            perf_pct = 0.0
-            
-        # Update summary to reflect Lifetime
-        visible_profit = lifetime_profit
-        visible_net_flow = lifetime_net_flow
-        # For "Start NAV", conceptually it's 0, but for the table display context, 
-        # showing 0 might confuse if the user treats the first row as "Start".
-        # However, to satisfy "End = Start + Flow + Profit" with Start=0:
-        # End (2.1B) = 0 + 1.7B (Flow) + 0.4B (Profit). This balances.
-        visible_start_nav = 0 
+    # If Genesis (no predecessor for oldest), Start NAV is effectively 0 for calculation purposes
+    # but for display we might still show the first day's NAV.
+    # To make the summary consistent: End = Start + Flow + Profit
+    # If Day 1 is included, "visible_start_nav" is the End NAV of Day 1.
+    # The "mathematical start" was 0.
+    oldest_is_genesis = False
+    oldest_date = datetime.strptime(res[-1]["date"], "%Y-%m-%d").date()
+    if not db.query(models.DailySnapshot).filter(models.DailySnapshot.date < oldest_date).first():
+       oldest_is_genesis = True
+       visible_start_nav = 0
+       # Recalculate net flow for consistency with Start=0
+       # Logic: End (2.1B) = 0 + Flow + Profit
+       # We already have Profit (sum of changes).
+       # Flow = End - Profit
+       visible_net_flow = _d(visible_end_nav) - _d(visible_profit)
 
     summary = {
-        "start_nav": visible_start_nav,
-        "end_nav": visible_end_nav,
+        "start_nav": _safe_float(visible_start_nav),
+        "end_nav": _safe_float(visible_end_nav),
         "net_flow": _safe_float(visible_net_flow),
         "total_profit": _safe_float(visible_profit),
         "total_performance_pct": _safe_float(perf_pct)

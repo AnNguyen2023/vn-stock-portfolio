@@ -248,7 +248,7 @@ export default function Dashboard() {
         </div>
 
         {/* TABLE */}
-        <StockTable {...{ data, buyForm, setBuyForm, sellForm, setSellForm, setShowBuy, setShowSell, lastUpdated: portfolioLastUpdated }} />
+        <StockTable {...{ data, buyForm, setBuyForm, sellForm, setSellForm, setShowBuy, setShowSell, lastUpdated: portfolioLastUpdated, navHistory }} />
 
         {/* HISTORY */}
         <HistoryTabs {...{ activeHistoryTab, setActiveHistoryTab, startDate, setStartDate, endDate, setEndDate, handleCalculateProfit, data, PIE_COLORS, historicalProfit, navHistory, logs, setEditingNote, setShowNoteModal }} />

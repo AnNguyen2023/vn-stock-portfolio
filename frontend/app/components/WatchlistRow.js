@@ -121,19 +121,19 @@ export default function WatchlistRow({ item, onRemove, isSelected, onToggle }) {
                 <TrendingIcon trend={trending.trend} changePct={trending.change_pct} size={20} textSize="text-[15px]" fontWeight="font-medium" />
             </td>
 
-            <td className="p-3 text-right font-medium text-slate-600 text-sm tabular-nums">
+            <td className="p-3 text-right font-medium text-slate-600 text-[15.5px] tabular-nums">
                 {item.pb ? item.pb.toFixed(2) : "-"}
             </td>
 
-            <td className="p-3 text-right font-medium text-slate-600 text-sm tabular-nums">
+            <td className="p-3 text-right font-medium text-slate-600 text-[15.5px] tabular-nums">
                 {item.roe ? item.roe.toFixed(3) + "%" : "-"}
             </td>
 
-            <td className="p-3 text-right font-medium text-slate-600 text-sm tabular-nums">
+            <td className="p-3 text-right font-medium text-slate-600 text-[15.5px] tabular-nums">
                 {item.roa ? item.roa.toFixed(3) + "%" : "-"}
             </td>
 
-            <td className="p-3 text-right font-medium text-slate-600 text-sm tabular-nums">
+            <td className="p-3 text-right font-medium text-slate-600 text-[15.5px] tabular-nums">
                 {item.pe ? item.pe.toFixed(2) : "-"}
             </td>
 
