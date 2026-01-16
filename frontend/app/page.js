@@ -254,7 +254,7 @@ export default function Dashboard() {
         <HistoryTabs {...{ activeHistoryTab, setActiveHistoryTab, startDate, setStartDate, endDate, setEndDate, handleCalculateProfit, data, PIE_COLORS, historicalProfit, navHistory, logs, setEditingNote, setShowNoteModal }} />
 
         {/* MODALS */}
-        <CashModal {...{ showDeposit, showWithdraw, amount, setAmount, description, setDescription, handleAmountChange, handleDeposit, handleWithdraw, closeModals }} />
+        <CashModal {...{ showDeposit, showWithdraw, amount, setAmount, description, setDescription, handleAmountChange, handleDeposit, handleWithdraw, closeModals, cash: data?.cash_balance || 0 }} />
         <TradeModal {...{ showBuy, showSell, buyForm, setBuyForm, sellForm, setSellForm, handleBuy, handleSell, handleVolumeChange, handlePriceChange, handlePriceBlur, closeModals, data }} />
         <UndoModal {...{ showUndoConfirm, setShowUndoConfirm, confirmUndo }} />
         <NoteModal {...{ showNoteModal, setShowNoteModal, editingNote, setEditingNote, handleUpdateNote }} />

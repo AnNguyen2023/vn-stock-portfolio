@@ -87,17 +87,33 @@ export default function StockTable({ data, buyForm, setBuyForm, setSellForm, set
           </div>
           <span className="px-2 py-0.5 bg-slate-100 text-slate-500 text-xs font-bold rounded-full">{data?.holdings?.length || 0} mã</span>
         </div>
-        {/* Toggle Button */}
-        <button
-          onClick={() => setIsExpanded(!isExpanded)}
-          className="p-2.5 bg-emerald-500 hover:bg-emerald-600 rounded-xl transition-all shadow-md hover:shadow-lg"
-          title={isExpanded ? 'Thu gọn' : 'Mở rộng'}
-        >
-          <ChevronDown
-            size={22}
-            className={`text-white transition-transform duration-300 ${isExpanded ? 'rotate-180' : ''}`}
-          />
-        </button>
+        {/* Action Buttons */}
+        <div className="flex items-center gap-2">
+          <button
+            onClick={() => setShowBuy(true)}
+            className="px-4 py-2 bg-rose-500 text-white text-sm font-bold rounded-xl hover:bg-rose-600 transition-all shadow-sm active:scale-95"
+          >
+            Mua
+          </button>
+          <button
+            onClick={() => setShowSell(true)}
+            className="px-4 py-2 bg-purple-500 text-white text-sm font-bold rounded-xl hover:bg-purple-600 transition-all shadow-sm active:scale-95"
+          >
+            Bán
+          </button>
+
+          {/* Toggle Button */}
+          <button
+            onClick={() => setIsExpanded(!isExpanded)}
+            className="p-2.5 bg-emerald-500 hover:bg-emerald-600 rounded-xl transition-all shadow-md hover:shadow-lg"
+            title={isExpanded ? 'Thu gọn' : 'Mở rộng'}
+          >
+            <ChevronDown
+              size={22}
+              className={`text-white transition-transform duration-300 ${isExpanded ? 'rotate-180' : ''}`}
+            />
+          </button>
+        </div>
       </div>
 
       {/* Collapsible Content with Curtain Animation */}

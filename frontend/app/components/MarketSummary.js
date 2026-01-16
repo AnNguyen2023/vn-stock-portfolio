@@ -58,7 +58,7 @@ export default function MarketSummary() {
         }
 
         return (
-            <div className="flex-1 bg-slate-50 border border-slate-200 rounded-xl p-3 shadow-sm relative overflow-hidden flex flex-col group min-h-[220px] hover:shadow-md transition-shadow">
+            <div className="flex-1 bg-slate-50 border border-slate-200 rounded-xl p-3 shadow-sm relative overflow-hidden flex flex-col group min-h-[176px] hover:shadow-md transition-shadow">
                 {/* Header - Index Name & Live Badge */}
                 <div className="flex items-center gap-2 mb-2 relative z-10 px-1">
                     <h4 className="text-[10px] font-black text-slate-400 uppercase tracking-[0.2em]">{indexData.index}</h4>
@@ -69,7 +69,7 @@ export default function MarketSummary() {
                 </div>
 
                 {/* Chart Area */}
-                <div className="flex-1 -mx-3 mb-2 min-h-[100px] relative bg-white/50 overflow-hidden">
+                <div className="flex-1 -mx-3 mb-2 min-h-[80px] relative bg-white/50 overflow-hidden">
                     {showChart ? (
                         <LightweightChart
                             data={indexData.sparkline}
