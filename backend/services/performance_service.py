@@ -208,17 +208,35 @@ def growth_series(db: Session, period: str = "1m") -> Dict[str, Any]:
     ticker_base_prices: Dict[str, Decimal] = {}
     portfolio_daily_values = []
     first_valid_port_idx = -1
+    
+    # Forward-fill price map to handle missing data (prevents nosedive)
+    last_known_prices: Dict[str, Decimal] = {}
 
     for i, day in enumerate(sorted_dates):
         day_prices = price_map[day]
+        
+        # 1. Update last known prices with today's available data
         for t in fetch_tickers:
-            price = day_prices.get(t, Decimal("0"))
+            p = day_prices.get(t, Decimal("0"))
+            if p > 0:
+                last_known_prices[t] = p
+            elif t in last_known_prices:
+                # Fallback to previous day's price if missing
+                day_prices[t] = last_known_prices[t]
+
+        # 2. Capture Base Prices (First non-zero occurrence)
+        for t in fetch_tickers:
+            price = last_known_prices.get(t, Decimal("0"))
             if t not in ticker_base_prices and price > 0:
                 ticker_base_prices[t] = price
 
+        # 3. Calculate Portfolio Value
         val_t = Decimal("0")
         for h in holdings:
+            # Use forward-filled price
             p = day_prices.get(h.ticker, Decimal("0"))
+            if p == 0:
+                 p = last_known_prices.get(h.ticker, Decimal("0"))
             val_t += _d(h.total_volume) * p
         portfolio_daily_values.append(val_t)
         
@@ -232,15 +250,20 @@ def growth_series(db: Session, period: str = "1m") -> Dict[str, Any]:
         day_prices = price_map[day]
         item = {"date": day.strftime("%Y-%m-%d")}
         
+        # 1. PORTFOLIO GROWTH
+        val_t = portfolio_daily_values[i]
         p_growth = Decimal("0")
         if base_nav > 0 and i >= first_valid_port_idx:
-            p_growth = (portfolio_daily_values[i] - base_nav) / base_nav * 100
+            p_growth = (val_t - base_nav) / base_nav * 100
         item["PORTFOLIO"] = round(_safe_float(p_growth), 2)
         
+        # 2. TICKER GROWTH (Indices & Stocks)
         for t in fetch_tickers:
             t_growth = Decimal("0")
-            base_p = ticker_base_prices.get(t, Decimal("0"))
+            # Use forward-filled price for consistency
             curr_p = day_prices.get(t, Decimal("0"))
+            base_p = ticker_base_prices.get(t, Decimal("0"))
+            
             if base_p > 0 and curr_p > 0:
                 t_growth = (curr_p - base_p) / base_p * 100
             item[t] = round(_safe_float(t_growth), 2)
