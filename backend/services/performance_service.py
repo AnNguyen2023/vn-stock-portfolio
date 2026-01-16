@@ -360,26 +360,22 @@ def nav_history(db: Session, start_date: date | None = None, end_date: date | No
     if not res:
         return {"history": [], "summary": {"start_nav": 0, "end_nav": 0, "net_flow": 0, "total_profit": 0, "total_performance_pct": 0}}
 
-    visible_start_nav = res[-1]["nav"]
     visible_end_nav = res[0]["nav"]
     visible_profit = sum(item["change"] for item in res)
-    visible_net_flow = _d(visible_end_nav) - _d(visible_start_nav) - _d(visible_profit)
     
-    # If Genesis (no predecessor for oldest), Start NAV is effectively 0 for calculation purposes
-    # but for display we might still show the first day's NAV.
-    # To make the summary consistent: End = Start + Flow + Profit
-    # If Day 1 is included, "visible_start_nav" is the End NAV of Day 1.
-    # The "mathematical start" was 0.
-    oldest_is_genesis = False
+    # Determine correct Start NAV relative to the window
+    # If the oldest visible snapshot has a predecessor, Start NAV is that predecessor's NAV.
+    # If it has no predecessor (Genesis), Start NAV is 0.
     oldest_date = datetime.strptime(res[-1]["date"], "%Y-%m-%d").date()
-    if not db.query(models.DailySnapshot).filter(models.DailySnapshot.date < oldest_date).first():
-       oldest_is_genesis = True
-       visible_start_nav = 0
-       # Recalculate net flow for consistency with Start=0
-       # Logic: End (2.1B) = 0 + Flow + Profit
-       # We already have Profit (sum of changes).
-       # Flow = End - Profit
-       visible_net_flow = _d(visible_end_nav) - _d(visible_profit)
+    prev_db = db.query(models.DailySnapshot).filter(models.DailySnapshot.date < oldest_date).order_by(desc(models.DailySnapshot.date)).first()
+    
+    if prev_db:
+        visible_start_nav = _d(prev_db.total_nav)
+    else:
+        visible_start_nav = 0
+
+    # Derive Net Flow from accounting identity: End = Start + Flow + Profit
+    visible_net_flow = _d(visible_end_nav) - _d(visible_start_nav) - _d(visible_profit)
 
     summary = {
         "start_nav": _safe_float(visible_start_nav),
