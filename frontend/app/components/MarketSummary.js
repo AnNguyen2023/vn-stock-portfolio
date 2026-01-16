@@ -85,10 +85,10 @@ export default function MarketSummary() {
                 </div>
 
                 {/* Price & Change Info - Below Chart */}
-                <div className="flex justify-between items-start mb-0.5 relative z-10 px-1 border-t border-slate-100 pt-0.5">
+                <div className="flex justify-between items-start mb-0 relative z-10 px-1 border-t border-slate-100 pt-0.5">
                     <div className="flex flex-col">
                         <div className="flex items-baseline gap-2">
-                            <span className={`text-[25px] font-bold tabular-nums tracking-tight ${isPositive ? 'text-emerald-600' : 'text-rose-600'}`}>
+                            <span className={`text-[21px] font-bold tabular-nums tracking-tight ${isPositive ? 'text-emerald-600' : 'text-rose-600'}`}>
                                 {displayPrice?.toLocaleString('en-US', { minimumFractionDigits: 2, maximumFractionDigits: 2 })}
                             </span>
                         </div>
@@ -134,7 +134,7 @@ export default function MarketSummary() {
             <div className="flex items-center justify-between mb-3 gap-4">
                 <div className="flex items-center gap-3 whitespace-nowrap">
                     <BarChart3 size={18} className="text-slate-600" />
-                    <h3 className="text-[14px] sm:text-base font-black text-slate-700 uppercase tracking-tighter">Thông tin Thị trường</h3>
+                    <h3 className="text-[17px] font-medium text-slate-600 uppercase tracking-tight">Thông tin Thị trường</h3>
                     {data && data.length > 0 && data[0].last_updated && (
                         <span className="text-xs font-bold text-slate-400 hidden md:inline">
                             {new Date(data[0].last_updated).toLocaleDateString('vi-VN')}

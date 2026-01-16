@@ -42,7 +42,7 @@ export default function HistoryTabs({
         <div className="flex items-center gap-3">
           <div className="flex items-center gap-2">
             <Book size={20} className="text-slate-600" />
-            <h2 className="text-lg font-bold text-slate-600 uppercase tracking-tight">Nhật Ký Dữ Liệu</h2>
+            <h2 className="text-[17px] font-medium text-slate-600 uppercase tracking-tight">Nhật Ký Dữ Liệu</h2>
           </div>
         </div>
         <div className="flex flex-wrap gap-3 items-center">

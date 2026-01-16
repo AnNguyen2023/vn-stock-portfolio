@@ -81,7 +81,7 @@ export default function StockTable({ data, buyForm, setBuyForm, setSellForm, set
         <div className="flex items-center gap-3">
           <div className="flex items-center gap-2">
             <List size={20} className="text-slate-600" />
-            <h2 className="text-xl font-bold text-slate-600 uppercase tracking-tight">Danh mục cổ phiếu</h2>
+            <h2 className="text-[17px] font-medium text-slate-600 uppercase tracking-tight">Danh mục cổ phiếu</h2>
           </div>
           <span className="px-2 py-0.5 bg-slate-100 text-slate-500 text-xs font-bold rounded-full">{data?.holdings?.length || 0} mã</span>
         </div>
@@ -90,7 +90,7 @@ export default function StockTable({ data, buyForm, setBuyForm, setSellForm, set
         <div className="flex items-center gap-2">
           <button
             onClick={() => toast.info("Tính năng đang phát triển", { description: "Chức năng quản lý cổ tức sẽ sớm ra mắt!" })}
-            className="px-4 py-2 bg-sky-500 text-white text-sm font-bold rounded-xl hover:bg-sky-600 transition-all shadow-sm active:scale-95"
+            className="px-4 py-2 bg-orange-100 text-emerald-700 text-sm font-bold rounded-xl hover:bg-orange-200 transition-all shadow-sm active:scale-95"
           >
             Cổ tức
           </button>

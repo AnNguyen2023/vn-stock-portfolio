@@ -13,7 +13,7 @@ export default function WatchlistToolbar({
         <div className="p-4 border-b border-slate-300 flex flex-col md:flex-row gap-4 justify-between items-center bg-slate-50/30">
             <div className="flex items-center gap-2">
                 <Bookmark size={20} className="text-slate-600" />
-                <h2 className="text-xl font-bold text-slate-600 uppercase tracking-tight">Watchlist Pro</h2>
+                <h2 className="text-[17px] font-medium text-slate-600 uppercase tracking-tight">Watchlist Pro</h2>
             </div>
 
 
