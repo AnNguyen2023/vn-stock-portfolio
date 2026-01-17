@@ -8,6 +8,7 @@ import models
 from core.db import get_db
 from core.logger import logger
 from services import market_service
+from core.response import success, fail
 
 router = APIRouter(tags=["Market Data"])
 
@@ -17,7 +18,7 @@ def seed_index_data(background_tasks: BackgroundTasks):
     Trigger background job to sync VNINDEX, VN30, HNX30 historical data.
     """
     background_tasks.add_task(market_service.seed_index_data_task)
-    return {"success": True, "message": "Fetching VN-INDEX historical data in background."}
+    return success(data={"message": "Fetching VN-INDEX historical data in background."})
 
 @router.post("/sync-portfolio-history")
 def sync_portfolio_history(background_tasks: BackgroundTasks, db: Session = Depends(get_db)):
@@ -28,10 +29,10 @@ def sync_portfolio_history(background_tasks: BackgroundTasks, db: Session = Depe
     tickers = [h.ticker for h in holdings]
     
     if not tickers:
-        return {"success": True, "message": "No active holdings found to sync."}
+        return success(data={"message": "No active holdings found to sync."})
 
     background_tasks.add_task(market_service.sync_portfolio_history_task, tickers, 2.0)
-    return {"success": True, "message": f"Syncing history for {len(tickers)} stocks in background."}
+    return success(data={"message": f"Syncing history for {len(tickers)} stocks in background."})
 
 @router.get("/historical")
 def get_historical(
@@ -62,11 +63,10 @@ def get_historical(
         logger.info(f"Low history cache for {ticker}, triggering background sync.")
         background_tasks.add_task(market_service.sync_historical_task, ticker, period)
 
-    return {
-        "success": True,
+    return success(data={
         "ticker": ticker,
-        "data": [{"date": i.date.strftime("%Y-%m-%d"), "close": float(i.close_price)} for i in stored_data],
-    }
+        "history": [{"date": i.date.strftime("%Y-%m-%d"), "close": float(i.close_price)} for i in stored_data],
+    })
 
 @router.get("/trending/{ticker}")
 def get_trending(ticker: str, background_tasks: BackgroundTasks, db: Session = Depends(get_db)):
@@ -74,10 +74,7 @@ def get_trending(ticker: str, background_tasks: BackgroundTasks, db: Session = D
     Get 5-session price trending indicator for a ticker.
     """
     data = market_service.get_trending_indicator(ticker, db, background_tasks)
-    return {
-        "success": True,
-        "data": data
-    }
+    return success(data=data)
 
 @router.get("/market-summary")
 def get_market_summary(db: Session = Depends(get_db)):
@@ -86,10 +83,7 @@ def get_market_summary(db: Session = Depends(get_db)):
     Orchestrated by the service layer with dual-layer caching (Redis/Memory).
     """
     data = market_service.get_market_summary_service(db)
-    return {
-        "success": True,
-        "data": data
-    }
+    return success(data=data)
 
 @router.get("/migrate-value")
 def migrate_value_column(db: Session = Depends(get_db)):
@@ -101,14 +95,14 @@ def migrate_value_column(db: Session = Depends(get_db)):
         result = db.execute(check_sql).fetchone()
         
         if result:
-            return {"success": True, "message": "Column 'value' already exists."}
+            return success(data={"message": "Column 'value' already exists."})
         
         db.execute(text("ALTER TABLE historical_prices ADD COLUMN value NUMERIC DEFAULT 0"))
         db.commit()
-        return {"success": True, "message": "Added column 'value' to historical_prices."}
+        return success(data={"message": "Added column 'value' to historical_prices."})
     except Exception as e:
         logger.error(f"Migration error: {e}")
-        return {"success": False, "message": str(e)}
+        return fail(code="MIGRATION_ERROR", message=str(e))
 
 # --- TEST DATA ENDPOINTS ---
 
@@ -117,14 +111,14 @@ def seed_test_data(ticker: str, days: int = 7):
     """
     Seed test data for a specific ticker from existing history.
     """
-    return market_service.seed_test_data_task(ticker, days)
+    return success(data=market_service.seed_test_data_task(ticker, days))
 
 @router.post("/test/update")
 def update_test_data(ticker: str, price: float, volume: float = 0):
     """
     Manually update a price in the test table for today.
     """
-    return market_service.update_test_price(ticker, price, volume)
+    return success(data=market_service.update_test_price(ticker, price, volume))
 
 @router.get("/test/summary")
 def get_test_market_summary(db: Session = Depends(get_db)):
@@ -132,10 +126,7 @@ def get_test_market_summary(db: Session = Depends(get_db)):
     Get market summary using data from the test table.
     """
     data = market_service.get_test_market_summary_service(db)
-    return {
-        "success": True,
-        "data": data
-    }
+    return success(data=data)
 
 @router.get("/vps-live")
 def get_vps_live_board(symbols: str = "FPT,HAG,VCI,MBB,STB,FUEVFVND,MBS,BAF,DXG,SHB"):
@@ -148,19 +139,14 @@ def get_vps_live_board(symbols: str = "FPT,HAG,VCI,MBB,STB,FUEVFVND,MBS,BAF,DXG,
     ticker_list = [s.strip().upper() for s in symbols.split(",")]
     raw_data = get_realtime_prices_vps(ticker_list)
     
-    return {
-        "success": True,
-        "source": "vps_direct",
-        "data": raw_data
-    }
+    return success(data=raw_data, meta={"source": "vps_direct"})
 @router.get("/intraday/{ticker}")
 def get_intraday(ticker: str):
     """
     Get intraday time-series data for a specific ticker.
     """
     data = market_service.get_intraday_data_service(ticker)
-    return {
-        "success": True,
+    return success(data={
         "ticker": ticker.upper(),
-        "data": data
-    }
+        "intraday": data
+    })

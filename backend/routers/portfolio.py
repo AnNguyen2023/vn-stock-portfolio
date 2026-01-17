@@ -12,7 +12,9 @@ from core.exceptions import ValidationError
 from core.logger import logger
 
 from services.portfolio_service import calculate_portfolio, get_ticker_profit
+from services.portfolio_service import calculate_portfolio, get_ticker_profit
 from services.performance_service import calculate_twr_metrics, growth_series, nav_history
+from core.response import success, fail
 
 router = APIRouter(tags=["Portfolio & Performance"])
 
@@ -44,8 +46,9 @@ def deposit_money(req: schemas.DepositRequest, db: Session = Depends(get_db)):
     db.commit()
 
     invalidate_dashboard_cache()
+    invalidate_dashboard_cache()
     logger.info(f"Deposit successful: {req.amount:,.0f} VNĐ. New balance: {asset.cash_balance:,.0f} VNĐ.")
-    return {"success": True, "message": "Funds deposited successfully."}
+    return success(data={"message": "Funds deposited successfully."})
 
 @router.post("/withdraw")
 def withdraw_money(req: schemas.DepositRequest, db: Session = Depends(get_db)):
@@ -67,32 +70,30 @@ def withdraw_money(req: schemas.DepositRequest, db: Session = Depends(get_db)):
     db.commit()
 
     invalidate_dashboard_cache()
+    invalidate_dashboard_cache()
     logger.info(f"Withdrawal successful: {req.amount:,.0f} VNĐ. New balance: {asset.cash_balance:,.0f} VNĐ.")
-    return {"success": True, "message": "Funds withdrawn successfully."}
+    return success(data={"message": "Funds withdrawn successfully."})
 
 @router.get("/portfolio")
 def get_portfolio(db: Session = Depends(get_db)):
     """
     Retrieves the complete portfolio valuation and breakdown.
     """
-    data = calculate_portfolio(db)
-    return {"success": True, "data": data}
+    return success(data=calculate_portfolio(db))
 
 @router.get("/performance")
 def get_performance(db: Session = Depends(get_db)):
     """
     Retrieves portfolio performance metrics (TWR).
     """
-    data = calculate_twr_metrics(db)
-    return {"success": True, "data": data}
+    return success(data=calculate_twr_metrics(db))
 
 @router.get("/chart-growth")
 def get_chart_growth(period: str = "1m", db: Session = Depends(get_db)):
     """
     Returns data series for the portfolio growth chart.
     """
-    data = growth_series(db, period=period)
-    return {"success": True, "data": data}
+    return success(data=growth_series(db, period=period))
 
 @router.get("/nav-history")
 def get_nav_history(start_date: str | None = None, end_date: str | None = None, limit: int = 30, db: Session = Depends(get_db)):
@@ -109,16 +110,14 @@ def get_nav_history(start_date: str | None = None, end_date: str | None = None, 
     d_start = _parse_date(start_date)
     d_end = _parse_date(end_date)
         
-    data = nav_history(db, start_date=d_start, end_date=d_end, limit=limit)
-    return {"success": True, "data": data}
+    return success(data=nav_history(db, start_date=d_start, end_date=d_end, limit=limit))
 
 @router.get("/ticker-lifetime-profit/{ticker}")
 def get_ticker_lifetime_profit(ticker: str, db: Session = Depends(get_db)):
     """
     Calculates lifetime realized and unrealized profit for a specific ticker.
     """
-    data = get_ticker_profit(db, ticker)
-    return {"success": True, "data": data}
+    return success(data=get_ticker_profit(db, ticker))
 
 @router.post("/save-nav-snapshot")
 def save_nav_snapshot_manual(db: Session = Depends(get_db)):
@@ -128,10 +127,10 @@ def save_nav_snapshot_manual(db: Session = Depends(get_db)):
     try:
         from core.data_engine import DataEngine
         DataEngine.end_of_day_sync()
-        return {"success": True, "message": "DataEngine EOD sync completed successfully"}
+        return success(data={"message": "DataEngine EOD sync completed successfully"})
     except Exception as e:
         logger.error(f"Manual DataEngine sync failed: {e}")
-        return {"success": False, "message": str(e)}
+        return fail(code="SYNC_ERROR", message=str(e))
 
 @router.post("/reset-data")
 def reset_data(db: Session = Depends(get_db)):
@@ -151,4 +150,4 @@ def reset_data(db: Session = Depends(get_db)):
     safe_flushall()
     invalidate_dashboard_cache()
 
-    return {"success": True, "message": "All system data has been wiped."}
+    return success(data={"message": "All system data has been wiped."})

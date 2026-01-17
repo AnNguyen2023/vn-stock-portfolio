@@ -9,6 +9,7 @@ from core.db import get_db
 from core.exceptions import ValidationError, EntityNotFoundException
 from core.logger import logger
 from services.market_service import get_watchlist_detail_service, invalidate_watchlist_detail_cache
+from core.response import success, fail
 
 router = APIRouter(prefix="/watchlists", tags=["Watchlist"])
 
@@ -19,10 +20,7 @@ def get_watchlists(db: Session = Depends(get_db)):
     """
     watchlists = db.query(models.Watchlist).options(joinedload(models.Watchlist.tickers)).all()
     # Explicitly use WatchlistSchema for each item to ensure serialization
-    return {
-        "success": True, 
-        "data": [schemas.WatchlistSchema.model_validate(w) for w in watchlists]
-    }
+    return success(data=[schemas.WatchlistSchema.model_validate(w) for w in watchlists])
 
 @router.post("/")
 def create_watchlist(req: schemas.WatchlistCreate, db: Session = Depends(get_db)):
@@ -39,7 +37,7 @@ def create_watchlist(req: schemas.WatchlistCreate, db: Session = Depends(get_db)
     db.refresh(new_wl)
     logger.info(f"Watchlist created: {req.name} (ID: {new_wl.id})")
     
-    return {"success": True, "data": new_wl}
+    return success(data=new_wl)
 
 @router.put("/{id}")
 def rename_watchlist(id: int, req: schemas.WatchlistUpdate, db: Session = Depends(get_db)):
@@ -60,7 +58,7 @@ def rename_watchlist(id: int, req: schemas.WatchlistUpdate, db: Session = Depend
     db.refresh(wl)
     logger.info(f"Watchlist renamed: {old_name} -> {req.name}")
     
-    return {"success": True, "data": wl}
+    return success(data=wl)
 
 @router.delete("/{id}")
 def delete_watchlist(id: int, db: Session = Depends(get_db)):
@@ -75,7 +73,7 @@ def delete_watchlist(id: int, db: Session = Depends(get_db)):
     db.commit()
     logger.info(f"Watchlist deleted: {id}")
     
-    return {"success": True, "message": "Watchlist deleted successfully."}
+    return success(data={"message": "Watchlist deleted successfully."})
 
 @router.post("/{id}/tickers")
 def add_ticker_to_watchlist(id: int, req: schemas.WatchlistTickerCreate, db: Session = Depends(get_db)):
@@ -108,7 +106,7 @@ def add_ticker_to_watchlist(id: int, req: schemas.WatchlistTickerCreate, db: Ses
     
     logger.info(f"Added {ticker} to watchlist {id}")
     
-    return {"success": True, "data": new_item}
+    return success(data=new_item)
 
 @router.delete("/{id}/tickers/{ticker_id}")
 def remove_ticker_from_watchlist(id: int, ticker_id: int, db: Session = Depends(get_db)):
@@ -128,7 +126,7 @@ def remove_ticker_from_watchlist(id: int, ticker_id: int, db: Session = Depends(
     
     logger.info(f"Removed {ticker} from watchlist {id}")
     
-    return {"success": True, "message": f"Removed {ticker} from watchlist."}
+    return success(data={"message": f"Removed {ticker} from watchlist."})
 
 @router.get("/{id}/detail")
 def get_watchlist_detail(id: int, db: Session = Depends(get_db)):
@@ -153,4 +151,6 @@ def get_watchlist_detail(id: int, db: Session = Depends(get_db)):
         if symbol in ticker_to_id:
             item['watchlist_ticker_id'] = ticker_to_id[symbol]
             
-    return {"success": True, "data": market_data}
+            item['watchlist_ticker_id'] = ticker_to_id[symbol]
+            
+    return success(data=market_data)

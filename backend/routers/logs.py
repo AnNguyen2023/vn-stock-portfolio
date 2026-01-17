@@ -8,6 +8,7 @@ from core.exceptions import EntityNotFoundException, ValidationError
 from core.logger import logger
 import models
 import schemas
+from core.response import success, fail
 
 router = APIRouter(tags=["Audit Logs"])
 
@@ -45,7 +46,7 @@ def get_audit_log(db: Session = Depends(get_db)):
     # 4. Sort by chronological descending order
     logs.sort(key=lambda x: x['date'], reverse=True)
     
-    return {"success": True, "data": logs}
+    return success(data=logs)
 
 @router.put("/logs/{tx_id}/note")
 def update_note(tx_id: int, req: schemas.NoteUpdate, db: Session = Depends(get_db)):
@@ -60,7 +61,7 @@ def update_note(tx_id: int, req: schemas.NoteUpdate, db: Session = Depends(get_d
     db.commit()
     logger.info(f"Updated note for transaction {tx_id}")
     
-    return {"success": True, "message": "Transaction note updated successfully."}
+    return success(data={"message": "Transaction note updated successfully."})
 
 @router.get("/history-summary")
 def get_history_summary(start_date: str, end_date: str, db: Session = Depends(get_db)):
@@ -86,4 +87,4 @@ def get_history_summary(start_date: str, end_date: str, db: Session = Depends(ge
         "trade_count": len(items)
     }
     
-    return {"success": True, "data": data}
+    return success(data=data)

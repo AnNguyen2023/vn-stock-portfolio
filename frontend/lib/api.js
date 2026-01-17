@@ -8,8 +8,8 @@ const API_URL = 'http://localhost:8000';
 // 2. Cấu hình Interceptor (Người gác cổng)
 axios.interceptors.response.use(
     (response) => {
-        // Tự động giải nén (unwrap) nếu Backend trả về format { success: true, data: ... }
-        if (response.data && typeof response.data === 'object' && response.data.success === true) {
+        // Tự động giải nén (unwrap) nếu Backend trả về format { ok: true, data: ... }
+        if (response.data && typeof response.data === 'object' && response.data.ok === true) {
             if (Object.prototype.hasOwnProperty.call(response.data, 'data')) {
                 // Ghi đè response.data bằng field data bên trong để giữ tương thích với UI cũ
                 response.data = response.data.data;
@@ -24,11 +24,13 @@ axios.interceptors.response.use(
                 description: 'Máy chủ Backend (Python) đang tắt hoặc lỗi mạng. Vui lòng kiểm tra Terminal.',
             });
         } else {
-            // Chuẩn hóa lỗi từ format mới: { success: false, error: { message, detail } }
+            // Chuẩn hóa lỗi từ format mới: { ok: false, error: { code, message, details } }
             const apiError = error.response.data?.error;
             if (apiError) {
                 // Gán ngược lại để các component dùng error.response.data.detail vẫn chạy được
-                error.response.data.detail = apiError.detail || apiError.message;
+                // Backend trả về details: { detail: "..." } hoặc custom dict
+                const detailContent = apiError.details?.detail || apiError.details || apiError.message;
+                error.response.data.detail = detailContent;
             }
         }
         return Promise.reject(error);
@@ -170,8 +172,9 @@ export function parseTrendingResponse(res, fallback = { trend: 'sideways', chang
     }
 
     // Fallback for raw success/data wrap if interceptor didn't catch it
-    if (data.success && data.data) return data.data;
-    if (data.success === false) return fallback;
+    if (data.ok && data.data) return data.data; // New format
+    if (data.success && data.data) return data.data; // Old format prop
+    if (data.ok === false || data.success === false) return fallback;
 
     return (data.trend) ? data : fallback;
 }

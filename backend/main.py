@@ -27,6 +27,8 @@ from core.data_engine import DataEngine
 
 app = FastAPI(title="Invest Journal")
 
+from core.response import success, fail
+
 # --- GLOBAL EXCEPTION HANDLER ---
 @app.exception_handler(AppBaseException)
 async def app_exception_handler(request: Request, exc: AppBaseException):
@@ -34,15 +36,21 @@ async def app_exception_handler(request: Request, exc: AppBaseException):
     Catch all custom application exceptions and return a standardized JSON response.
     """
     logger.error(f"App Error: {exc.message} | Status: {exc.status_code}")
-    return JSONResponse(
-        status_code=exc.status_code,
-        content={
-            "success": False,
-            "error": {
-                "message": exc.message,
-                "detail": exc.detail
-            }
-        }
+    return fail(
+        code="APP_ERROR",
+        message=exc.message,
+        details={"detail": exc.detail} if exc.detail else None,
+        status_code=exc.status_code
+    )
+
+from starlette.exceptions import HTTPException as StarletteHTTPException
+
+@app.exception_handler(StarletteHTTPException)
+async def http_exception_handler(request: Request, exc: StarletteHTTPException):
+    return fail(
+        code="HTTP_ERROR",
+        message=str(exc.detail),
+        status_code=exc.status_code
     )
 
 @app.exception_handler(Exception)
@@ -51,15 +59,11 @@ async def general_exception_handler(request: Request, exc: Exception):
     Catch-all for unhandled system exceptions.
     """
     logger.exception(f"Unhandled Exception: {str(exc)}")
-    return JSONResponse(
-        status_code=500,
-        content={
-            "success": False,
-            "error": {
-                "message": "Internal Server Error",
-                "detail": str(exc) if os.getenv("DEBUG") == "True" else None
-            }
-        }
+    return fail(
+        code="INTERNAL_ERROR",
+        message="Internal Server Error",
+        details={"error": str(exc)} if os.getenv("DEBUG") == "True" else None,
+        status_code=500
     )
 # --------------------------------
 
@@ -128,7 +132,7 @@ app.include_router(titan.router)
 
 @app.get("/")
 def root():
-    return {"status": "ok", "app": "Invest Journal"}
+    return success(data={"status": "ok", "app": "Invest Journal"})
 
 
 

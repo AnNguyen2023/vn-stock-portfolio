@@ -16,6 +16,7 @@ from titan.alpha_scanner import AlphaScanner
 from pydantic import BaseModel
 from core.exceptions import ValidationError, EntityNotFoundException
 from core.logger import logger
+from core.response import success, fail
 
 router = APIRouter(prefix="/titan", tags=["TITAN Scanner"])
 scanner = AlphaScanner()
@@ -45,7 +46,7 @@ def get_titan_status():
     """
     Returns the current status and progress of the TITAN scanner.
     """
-    return {"success": True, "data": scan_status}
+    return success(data=scan_status)
 
 @router.post("/stop")
 def stop_titan_scan():
@@ -56,8 +57,8 @@ def stop_titan_scan():
     if scan_status["is_running"]:
         should_stop = True
         logger.info("TITAN scan stop signal initiated by user.")
-        return {"success": True, "message": "Stop signal sent to TITAN scanner."}
-    return {"success": True, "message": "No active TITAN scan process to stop."}
+        return success(data={"message": "Stop signal sent to TITAN scanner."})
+    return success(data={"message": "No active TITAN scan process to stop."})
 
 @router.get("/results")
 def get_titan_results(db: Session = Depends(get_db)):
@@ -71,7 +72,7 @@ def get_titan_results(db: Session = Depends(get_db)):
         .first()
     )
     if not latest_scan:
-        return {"success": True, "data": []}
+        return success(data=[])
     
     # 2. Retrieve all outcomes for that session
     results = (
@@ -79,7 +80,7 @@ def get_titan_results(db: Session = Depends(get_db)):
         .filter(models.TitanScanResult.scanned_at == latest_scan[0])
         .all()
     )
-    return {"success": True, "data": results}
+    return success(data=results)
 
 async def run_scan_task(db_session_factory, settings: Optional[ScanSettings] = None):
     """
@@ -182,7 +183,7 @@ def trigger_titan_scan(background_tasks: BackgroundTasks, settings: Optional[Sca
     background_tasks.add_task(run_scan_task, get_db, settings)
     logger.info("TITAN Alpha scan triggered.")
     
-    return {"success": True, "message": "TITAN Alpha scanner background task started."}
+    return success(data={"message": "TITAN Alpha scanner background task started."})
 
 @router.get("/inspect/{symbol}")
 def inspect_ticker(symbol: str):
@@ -192,4 +193,4 @@ def inspect_ticker(symbol: str):
     data = scanner.inspect_ticker_stability(symbol.upper())
     if not data:
         raise EntityNotFoundException("Scanner data", symbol)
-    return {"success": True, "data": data}
+    return success(data=data)
