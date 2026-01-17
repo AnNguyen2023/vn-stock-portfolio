@@ -151,3 +151,7 @@ supabase/.branches/
 tmp/
 temp/
 .cache/
+
+.agent/*
+!.agent/skills/
+!.agent/skills/**
