@@ -11,11 +11,9 @@ REDIS_AVAILABLE = redis_client is not None
 
 def get_sparkline_data(ticker: str, memory_cache_get_fn, memory_cache_set_fn) -> list[float]:
     """
-    Fetch sparkline (last 7 sessions) with multi-level caching.
-    Priority: Memory -> Redis -> API.
     """
     ticker = ticker.upper()
-    cache_key = f"sparkline:{ticker}"
+    cache_key = f"sparkline_v2:{ticker}"
     
     # 1. Try Memory Cache
     sparkline = memory_cache_get_fn(cache_key)
@@ -44,7 +42,17 @@ def get_sparkline_data(ticker: str, memory_cache_get_fn, memory_cache_set_fn) ->
         # Fetch 1 month data to ensure we have at least 7 sessions
         live_hist = get_historical_prices(ticker, period="1m")
         if live_hist:
-            sparkline = [float(h["close"]) for h in live_hist[-7:]]
+            from datetime import datetime
+            sparkline = []
+            for h in live_hist[-30:]: # Return more history for better context (30 days)
+                dt = datetime.strptime(h["date"], "%Y-%m-%d")
+                ts = int(dt.timestamp())
+                sparkline.append({
+                    "timestamp": ts,
+                    "t": h["date"],
+                    "p": float(h["close"]),
+                    "v": float(h.get("volume", 0))
+                })
             
             # Update Caches
             memory_cache_set_fn(cache_key, sparkline, 3600)
@@ -65,7 +73,7 @@ def get_intraday_sparkline(ticker: str, memory_cache_get_fn, memory_cache_set_fn
     Fetch intraday sparkline (1m interval) for the most recent session.
     """
     ticker = ticker.upper()
-    cache_key = f"intraday_spark_v4_{ticker}"
+    cache_key = f"intraday_spark_v5_{ticker}"
     
     # 1. Try Memory Cache
     sparkline = memory_cache_get_fn(cache_key)
@@ -82,13 +90,33 @@ def get_intraday_sparkline(ticker: str, memory_cache_get_fn, memory_cache_set_fn
                 return sparkline
         except Exception:
             pass
+    
+    # 2.5 Try Redis date-specific cache (for after-hours)
+    if REDIS_AVAILABLE:
+        try:
+            from datetime import date as dt_date, timedelta
+            for days_back in range(0, 6):
+                check_date = dt_date.today() - timedelta(days=days_back)
+                if check_date.weekday() >= 5:  # Skip weekends
+                    continue
+                
+                date_key = f"intraday_{ticker}_{check_date.strftime('%Y%m%d')}"
+                cached_data = redis_client.get(date_key)
+                
+                if cached_data:
+                    sparkline = json.loads(cached_data)
+                    print(f"   [{ticker}] ✓ Loaded {len(sparkline)} cached intraday points from {check_date}")
+                    memory_cache_set_fn(cache_key, sparkline, 3600)
+                    return sparkline
+        except Exception as cache_err:
+            print(f"   [{ticker}] Date cache read failed: {cache_err}")
 
     # 3. Fetch from API
     # Check for global backoff
     backoff = memory_cache_get_fn("vci_backoff") or (REDIS_AVAILABLE and redis_client.get("vci_rate_limit_backoff"))
     if backoff:
-        print(f"   [{ticker}] VCI Backoff active. Skipping...")
-        return []
+        print(f"   [{ticker}] VCI Backoff active. Skipping Intraday, using Daily Sparkline...")
+        return get_sparkline_data(ticker, memory_cache_get_fn, memory_cache_set_fn)
 
     try:
         from vnstock import Vnstock
@@ -125,7 +153,9 @@ def get_intraday_sparkline(ticker: str, memory_cache_get_fn, memory_cache_set_fn
                 print(f"   [{ticker}] Falling back to latest history session: {session_date_str}")
                 df = stock.quote.history(interval='1m', start=session_date_str, end=session_date_str)
             else:
-                return []
+                # If cannot find last session or history failed
+                print(f"   [{ticker}] No fallback session found. Using Daily Sparkline.")
+                return get_sparkline_data(ticker, memory_cache_get_fn, memory_cache_set_fn)
 
         if df is not None and not df.empty:
             print(f"   [{ticker}] Successfully found {len(df)} rows.")
@@ -137,8 +167,8 @@ def get_intraday_sparkline(ticker: str, memory_cache_get_fn, memory_cache_set_fn
             df = df[df['time'].dt.date == intended_date]
             
             if df.empty:
-                print(f"   [{ticker}] NO ROWS found for SPECIFIC date: {intended_date}")
-                return []
+                print(f"   [{ticker}] NO ROWS found for SPECIFIC date: {intended_date}. Using Daily Sparkline.")
+                return get_sparkline_data(ticker, memory_cache_get_fn, memory_cache_set_fn)
                 
             df = df.sort_values('time')
             print(f"   [{ticker}] Session Data range: {df['time'].min()} to {df['time'].max()}")
@@ -207,10 +237,15 @@ def get_intraday_sparkline(ticker: str, memory_cache_get_fn, memory_cache_set_fn
                     "v": int(last_row.get('volume', 0)) if pd.notnull(last_p) else 0
                 })
             
-            # Update Caches
-            memory_cache_set_fn(cache_key, sparkline, 60)
+            # Update Caches with extended TTL
+            memory_cache_set_fn(cache_key, sparkline, 3600)  # 1h in memory
             if REDIS_AVAILABLE:
-                redis_client.setex(cache_key, 60, json.dumps(sparkline))
+                # Save with date-specific key for long-term retrieval (24h)
+                from datetime import date as dt_date
+                date_key = f"intraday_{ticker}_{dt_date.today().strftime('%Y%m%d')}"
+                redis_client.setex(date_key, 86400, json.dumps(sparkline))  # 24h
+                redis_client.setex(cache_key, 3600, json.dumps(sparkline))  # 1h standard
+                print(f"   [{ticker}] ✓ Cached {len(sparkline)} intraday points")
             
             return sparkline
             

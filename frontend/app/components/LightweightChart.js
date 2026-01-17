@@ -20,15 +20,15 @@ const LightweightChart = ({
 
         const chart = createChart(chartContainerRef.current, {
             layout: {
-                background: { type: ColorType.Solid, color: 'transparent' },
+                background: { type: ColorType.Solid, color: '#ffffff' },
                 textColor: '#64748b',
                 fontSize: 10,
                 fontFamily: 'Inter, sans-serif',
                 attributionLogo: false,
             },
             grid: {
-                vertLines: { color: 'rgba(148, 163, 184, 0.1)', visible: true },
-                horzLines: { color: 'rgba(148, 163, 184, 0.1)', visible: true },
+                vertLines: { color: 'rgba(148, 163, 184, 0.2)', visible: true },
+                horzLines: { color: 'rgba(148, 163, 184, 0.2)', visible: true },
             },
             width: chartContainerRef.current.clientWidth,
             height: height,

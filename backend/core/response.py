@@ -1,12 +1,13 @@
 from typing import Any, Optional
 from fastapi.responses import JSONResponse
+from fastapi.encoders import jsonable_encoder
 from core.schemas import ResponseEnvelope
 
 def success(data: Any = None, meta: Optional[dict] = None) -> dict:
     """Returns a standardized success response compatible with ResponseEnvelope."""
     return ResponseEnvelope(ok=True, data=data, meta=meta).dict()
 
-def fail(code: str, message: str, details: Optional[dict] = None, status_code: int = 400) -> JSONResponse:
+def fail(code: str, message: str, details: Optional[Any] = None, status_code: int = 400) -> JSONResponse:
     """Returns a standardized error response compatible with ResponseEnvelope."""
     content = ResponseEnvelope(
         ok=False,
@@ -15,5 +16,8 @@ def fail(code: str, message: str, details: Optional[dict] = None, status_code: i
             "message": message,
             "details": details
         }
-    ).dict()
-    return JSONResponse(status_code=status_code, content=content)
+    )
+    return JSONResponse(
+        status_code=status_code,
+        content=jsonable_encoder(content)
+    )

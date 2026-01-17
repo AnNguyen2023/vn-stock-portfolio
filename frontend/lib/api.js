@@ -149,6 +149,7 @@ export const getTitanInspect = (symbol) => axios.get(`${API_URL}/titan/inspect/$
 
 // --- MARKET SUMMARY API ---
 export const getMarketSummary = () => axios.get(`${API_URL}/market-summary`);
+export const getIndexWidgetData = (ticker = "VNINDEX") => axios.get(`${API_URL}/index-widget`, { params: { ticker } });
 
 // Lấy chỉ báo xu hướng 5 phiên của mã chứng khoán
 export const getTrending = (ticker) => axios.get(`${API_URL}/trending/${ticker}`);
