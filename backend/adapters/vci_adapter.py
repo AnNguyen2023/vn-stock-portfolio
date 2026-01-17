@@ -87,8 +87,8 @@ def get_intraday_sparkline(ticker: str, memory_cache_get_fn, memory_cache_set_fn
     # Check for global backoff
     backoff = memory_cache_get_fn("vci_backoff") or (REDIS_AVAILABLE and redis_client.get("vci_rate_limit_backoff"))
     if backoff:
-        print(f"   [{ticker}] VCI Backoff active. Skipping...")
-        return []
+        print(f"   [{ticker}] VCI Backoff active. Skipping Intraday, using Daily Sparkline...")
+        return get_sparkline_data(ticker, memory_cache_get_fn, memory_cache_set_fn)
 
     try:
         from vnstock import Vnstock
@@ -125,7 +125,9 @@ def get_intraday_sparkline(ticker: str, memory_cache_get_fn, memory_cache_set_fn
                 print(f"   [{ticker}] Falling back to latest history session: {session_date_str}")
                 df = stock.quote.history(interval='1m', start=session_date_str, end=session_date_str)
             else:
-                return []
+                # If cannot find last session or history failed
+                print(f"   [{ticker}] No fallback session found. Using Daily Sparkline.")
+                return get_sparkline_data(ticker, memory_cache_get_fn, memory_cache_set_fn)
 
         if df is not None and not df.empty:
             print(f"   [{ticker}] Successfully found {len(df)} rows.")
@@ -137,8 +139,8 @@ def get_intraday_sparkline(ticker: str, memory_cache_get_fn, memory_cache_set_fn
             df = df[df['time'].dt.date == intended_date]
             
             if df.empty:
-                print(f"   [{ticker}] NO ROWS found for SPECIFIC date: {intended_date}")
-                return []
+                print(f"   [{ticker}] NO ROWS found for SPECIFIC date: {intended_date}. Using Daily Sparkline.")
+                return get_sparkline_data(ticker, memory_cache_get_fn, memory_cache_set_fn)
                 
             df = df.sort_values('time')
             print(f"   [{ticker}] Session Data range: {df['time'].min()} to {df['time'].max()}")
