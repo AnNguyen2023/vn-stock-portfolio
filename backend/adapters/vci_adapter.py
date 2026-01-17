@@ -11,11 +11,9 @@ REDIS_AVAILABLE = redis_client is not None
 
 def get_sparkline_data(ticker: str, memory_cache_get_fn, memory_cache_set_fn) -> list[float]:
     """
-    Fetch sparkline (last 7 sessions) with multi-level caching.
-    Priority: Memory -> Redis -> API.
     """
     ticker = ticker.upper()
-    cache_key = f"sparkline:{ticker}"
+    cache_key = f"sparkline_v2:{ticker}"
     
     # 1. Try Memory Cache
     sparkline = memory_cache_get_fn(cache_key)
@@ -44,7 +42,17 @@ def get_sparkline_data(ticker: str, memory_cache_get_fn, memory_cache_set_fn) ->
         # Fetch 1 month data to ensure we have at least 7 sessions
         live_hist = get_historical_prices(ticker, period="1m")
         if live_hist:
-            sparkline = [float(h["close"]) for h in live_hist[-7:]]
+            from datetime import datetime
+            sparkline = []
+            for h in live_hist[-30:]: # Return more history for better context (30 days)
+                dt = datetime.strptime(h["date"], "%Y-%m-%d")
+                ts = int(dt.timestamp())
+                sparkline.append({
+                    "timestamp": ts,
+                    "t": h["date"],
+                    "p": float(h["close"]),
+                    "v": float(h.get("volume", 0))
+                })
             
             # Update Caches
             memory_cache_set_fn(cache_key, sparkline, 3600)
