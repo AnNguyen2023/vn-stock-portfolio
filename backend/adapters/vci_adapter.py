@@ -73,7 +73,7 @@ def get_intraday_sparkline(ticker: str, memory_cache_get_fn, memory_cache_set_fn
     Fetch intraday sparkline (1m interval) for the most recent session.
     """
     ticker = ticker.upper()
-    cache_key = f"intraday_spark_v4_{ticker}"
+    cache_key = f"intraday_spark_v5_{ticker}"
     
     # 1. Try Memory Cache
     sparkline = memory_cache_get_fn(cache_key)
@@ -90,6 +90,26 @@ def get_intraday_sparkline(ticker: str, memory_cache_get_fn, memory_cache_set_fn
                 return sparkline
         except Exception:
             pass
+    
+    # 2.5 Try Redis date-specific cache (for after-hours)
+    if REDIS_AVAILABLE:
+        try:
+            from datetime import date as dt_date, timedelta
+            for days_back in range(0, 6):
+                check_date = dt_date.today() - timedelta(days=days_back)
+                if check_date.weekday() >= 5:  # Skip weekends
+                    continue
+                
+                date_key = f"intraday_{ticker}_{check_date.strftime('%Y%m%d')}"
+                cached_data = redis_client.get(date_key)
+                
+                if cached_data:
+                    sparkline = json.loads(cached_data)
+                    print(f"   [{ticker}] ✓ Loaded {len(sparkline)} cached intraday points from {check_date}")
+                    memory_cache_set_fn(cache_key, sparkline, 3600)
+                    return sparkline
+        except Exception as cache_err:
+            print(f"   [{ticker}] Date cache read failed: {cache_err}")
 
     # 3. Fetch from API
     # Check for global backoff
@@ -217,10 +237,15 @@ def get_intraday_sparkline(ticker: str, memory_cache_get_fn, memory_cache_set_fn
                     "v": int(last_row.get('volume', 0)) if pd.notnull(last_p) else 0
                 })
             
-            # Update Caches
-            memory_cache_set_fn(cache_key, sparkline, 60)
+            # Update Caches with extended TTL
+            memory_cache_set_fn(cache_key, sparkline, 3600)  # 1h in memory
             if REDIS_AVAILABLE:
-                redis_client.setex(cache_key, 60, json.dumps(sparkline))
+                # Save with date-specific key for long-term retrieval (24h)
+                from datetime import date as dt_date
+                date_key = f"intraday_{ticker}_{dt_date.today().strftime('%Y%m%d')}"
+                redis_client.setex(date_key, 86400, json.dumps(sparkline))  # 24h
+                redis_client.setex(cache_key, 3600, json.dumps(sparkline))  # 1h standard
+                print(f"   [{ticker}] ✓ Cached {len(sparkline)} intraday points")
             
             return sparkline
             

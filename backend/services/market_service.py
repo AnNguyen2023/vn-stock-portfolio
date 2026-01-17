@@ -808,6 +808,122 @@ def get_test_market_summary_service(db: Session) -> list[dict]:
         })
     
     return results
+def _persist_vnindex_data(db: Session, session_info: dict, series_points: list[dict]):
+    """Save VNINDEX intraday and session snapshot to database."""
+    try:
+        trading_date = date.today()
+        
+        # 1. Update Session Snapshot
+        snapshot = db.query(models.VnindexSessionSnapshot).filter_by(trading_date=trading_date).first()
+        if not snapshot:
+            snapshot = models.VnindexSessionSnapshot(trading_date=trading_date)
+            db.add(snapshot)
+        
+        snapshot.last_value = session_info.get("last_value")
+        snapshot.change_abs = session_info.get("change_abs")
+        snapshot.change_pct = session_info.get("change_pct")
+        snapshot.total_volume = session_info.get("total_volume")
+        snapshot.total_value = session_info.get("total_value")
+        snapshot.advancers = session_info.get("advancers")
+        snapshot.decliners = session_info.get("decliners")
+        snapshot.unchanged = session_info.get("unchanged")
+        snapshot.adv_limit_count = session_info.get("adv_limit_count", 0)
+        snapshot.dec_limit_count = session_info.get("dec_limit_count", 0)
+        snapshot.phase_text = session_info.get("phase_text")
+        snapshot.created_at = datetime.now()
+
+        # 2. Update Intraday Points (Batch)
+        existing_times = {p.time for p in db.query(models.VnindexIntraday.time).filter_by(trading_date=trading_date).all()}
+        
+        new_records = []
+        for point in series_points:
+            t = point.get("t")
+            if not t or t in existing_times:
+                continue
+            
+            new_records.append(models.VnindexIntraday(
+                trading_date=trading_date,
+                time=t,
+                value=point.get("p"),
+                volume=point.get("v", 0),
+                source="VPS"
+            ))
+            existing_times.add(t)
+        
+        if new_records:
+            db.add_all(new_records)
+        
+        db.commit()
+    except Exception as e:
+        db.rollback()
+        logger.error(f"Failed to persist VNINDEX data: {e}")
+
+def get_index_widget_data(ticker: str, db: Session) -> dict:
+    """
+    Get complete index widget data (VNINDEX or VN30).
+    Persistence: Only VNINDEX is saved to DB.
+    """
+    from adapters.vci_adapter import get_intraday_sparkline
+    from adapters.vps_adapter import get_realtime_prices_vps
+    
+    ticker = ticker.upper()
+    cache_key = f"index_widget_{ticker}_v5"
+    
+    # Check cache
+    cached = mem_get(cache_key)
+    if cached:
+        return cached
+    
+    # 1. Get intraday series points
+    series_points = get_intraday_sparkline(ticker, mem_get, mem_set)
+    
+    # 2. Get real-time session info from VPS
+    vps_data = get_realtime_prices_vps([ticker])
+    ticker_vps = vps_data.get(ticker, {}) if vps_data else {}
+    
+    # 3. Calculate session info
+    last_value = ticker_vps.get("price", 0)
+    ref_price = ticker_vps.get("ref", 0)
+    
+    # Scaling: if price is > 100000, it's likely stock-style raw value (multiplied by 1000)
+    # If it's around 1000-2000, it's already index points.
+    if last_value > 10000:
+        last_value /= 1000
+        ref_price /= 1000
+    
+    change_abs = last_value - ref_price if last_value and ref_price else 0
+    change_pct = (change_abs / ref_price * 100) if ref_price else 0
+    
+    session_info = {
+        "index_name": ticker,
+        "last_value": round(last_value, 2),
+        "change_abs": round(change_abs, 2),
+        "change_pct": round(change_pct, 2),
+        "total_volume": int(ticker_vps.get("volume", 0)),
+        "total_value": int(ticker_vps.get("value", 0)),
+        "advancers": int(ticker_vps.get("adv", 0)),
+        "decliners": int(ticker_vps.get("dec", 0)),
+        "unchanged": int(ticker_vps.get("unc", 0)),
+        "adv_limit_count": int(ticker_vps.get("adv_limit", 0)),
+        "dec_limit_count": int(ticker_vps.get("dec_limit", 0)),
+        "phase_text": "Phiên ATC" if ticker_vps.get("phase") == "ATC" else ""
+    }
+    
+    result = {
+        "series_points": series_points,
+        "session_info": session_info,
+        "ref_level": round(ref_price, 2)
+    }
+    
+    # 4. Persistence logic
+    if ticker == "VNINDEX":
+        _persist_vnindex_data(db, session_info, series_points)
+    
+    # Cache for 15 seconds (fresher for widget)
+    mem_set(cache_key, result, 15)
+    
+    return result
+
 def get_intraday_data_service(ticker: str) -> list[dict]:
     """
     Fetch and normalize intraday data for a specific ticker.

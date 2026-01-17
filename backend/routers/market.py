@@ -91,6 +91,17 @@ def get_market_summary(db: Session = Depends(get_db)):
         "data": data
     }
 
+@router.get("/index-widget")
+def get_index_widget(ticker: str = "VNINDEX", db: Session = Depends(get_db)):
+    """
+    Get complete index widget data (VNINDEX or VN30).
+    """
+    data = market_service.get_index_widget_data(ticker, db)
+    return {
+        "success": True,
+        "data": data
+    }
+
 @router.get("/migrate-value")
 def migrate_value_column(db: Session = Depends(get_db)):
     """
