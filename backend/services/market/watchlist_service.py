@@ -71,7 +71,9 @@ def get_watchlist_detail_service(tickers: list[str], watchlist_id: int | None = 
     # 2. Lấy giá Real-time (Batch Request)
     try:
         current_prices = get_current_prices(tickers_upper)
-    except:
+    except Exception as e:
+        from core.logger import logger
+        logger.warning(f"Failed to fetch real-time prices: {e}")
         current_prices = {}
 
     # 3. Batch Trending Data (One DB Session for all)
