@@ -226,12 +226,16 @@ def _get_market_fallback(db: Session, indices: list[str]) -> list[dict]:
             is_test = isinstance(latest_map[t], models.TestHistoricalPrice)
             table = models.TestHistoricalPrice if is_test else models.HistoricalPrice
             
-            q = (
+            # Wrap in subquery to avoid UNION ALL ORDER BY/LIMIT syntax issues
+            sub_q = (
                 db.query(table.ticker, table.close_price)
                 .filter(table.ticker == t, table.date < latest_date)
                 .order_by(table.date.desc())
                 .limit(1)
+                .subquery()
             )
+            # Select from the subquery to make it a compatible Selectable
+            q = db.query(sub_q.c.ticker, sub_q.c.close_price)
             queries.append(q)
             
         if queries:
