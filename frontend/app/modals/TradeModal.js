@@ -72,6 +72,10 @@ export default function TradeModal({
               </div>
             </div>
             <div>
+              <label className="text-sm font-medium text-slate-600 uppercase tracking-widest ml-1 mb-2 block">Ngày bán</label>
+              <input type="date" required className="w-full p-4 bg-slate-50 border border-slate-100 rounded-2xl text-sm font-bold outline-none focus:ring-4 focus:ring-emerald-100 uppercase" value={sellForm.transaction_date || ""} onChange={(e) => setSellForm({ ...sellForm, transaction_date: e.target.value })} />
+            </div>
+            <div>
               <label className="text-sm font-medium text-slate-600 uppercase tracking-widest ml-1 mb-2 block">Ghi chú lệnh bán</label>
               <textarea className="w-full p-3 bg-slate-50 border border-slate-100 rounded-2xl text-sm font-medium outline-none focus:ring-4 focus:ring-emerald-100 min-h-[80px] resize-none" value={sellForm.note || ""} onChange={(e) => setSellForm({ ...sellForm, note: e.target.value })} />
             </div>

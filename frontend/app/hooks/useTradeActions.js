@@ -33,6 +33,7 @@ export default function useTradeActions(fetchAllData) {
         volume: "",
         price: "",
         available: 0,
+        transaction_date: new Date().toISOString().split('T')[0],
         note: "",
     });
 
@@ -47,7 +48,7 @@ export default function useTradeActions(fetchAllData) {
         setDescription("");
 
         setBuyForm({ ticker: "", volume: "", price: "", fee_rate: 0.0015, transaction_date: new Date().toISOString().split('T')[0], note: "" });
-        setSellForm({ ticker: "", volume: "", price: "", available: 0, note: "" });
+        setSellForm({ ticker: "", volume: "", price: "", available: 0, transaction_date: new Date().toISOString().split('T')[0], note: "" });
     };
 
     const handleAmountChange = (e) => {
