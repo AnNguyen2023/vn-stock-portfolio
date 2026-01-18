@@ -20,7 +20,7 @@ def _is_market_open(now_dt) -> bool:
     market_close = now_dt.replace(hour=15, minute=0, second=0, microsecond=0)
     return market_open <= now_dt <= market_close
 
-def get_sparkline_data(ticker: str, memory_cache_get_fn, memory_cache_set_fn) -> list[float]:
+def get_sparkline_data(ticker: str, memory_cache_get_fn, memory_cache_set_fn) -> list[dict]:
     """
     """
     ticker = ticker.upper()
@@ -139,7 +139,7 @@ def get_intraday_sparkline(
     memory_cache_set_fn,
     fallback_session_date: str | None = None,
     fallback_close: float | None = None,
-) -> list[float]:
+) -> list[dict]:
     """
     Fetch intraday sparkline (1m interval) for the most recent session.
     """
