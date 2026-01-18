@@ -28,6 +28,10 @@ export default function TradeModal({
               </div>
             </div>
             <div>
+              <label className="text-sm font-medium text-slate-600 uppercase tracking-widest ml-1 mb-2 block">Ngày mua</label>
+              <input type="date" required className="w-full p-4 bg-slate-50 border border-slate-100 rounded-2xl text-sm font-bold outline-none focus:ring-4 focus:ring-rose-100 uppercase" value={buyForm.transaction_date || ""} onChange={(e) => setBuyForm({ ...buyForm, transaction_date: e.target.value })} />
+            </div>
+            <div>
               <label className="text-sm font-medium text-slate-600 uppercase tracking-widest ml-1 mb-2 block">Ghi chú lệnh mua</label>
               <textarea className="w-full p-3 bg-slate-50 border border-slate-100 rounded-2xl text-sm font-medium outline-none focus:ring-4 focus:ring-rose-100 min-h-[80px] resize-none" value={buyForm.note || ""} onChange={(e) => setBuyForm({ ...buyForm, note: e.target.value })} />
             </div>
@@ -82,7 +86,7 @@ export default function TradeModal({
             </div>
             <div className="flex gap-3 pt-2">
               <button type="button" onClick={closeModals} className="flex-1 py-4 bg-slate-100 text-slate-500 font-medium rounded-2xl text-sm uppercase hover:bg-slate-200">Hủy</button>
-              <button type="submit" className="flex-1 py-4 bg-emerald-500 text-white font-medium rounded-2xl text-sm uppercase shadow-lg shadow-emerald-100 active:scale-95 transition-all">Xác nhận bán</button>
+              <button type="submit" className="flex-1 py-4 bg-emerald-500 text-white font-medium rounded-2xl text-sm uppercase shadow-lg shadow-emerald-100 active:scale-95 transition-all">Xác Nhận</button>
             </div>
           </form>
         </div>

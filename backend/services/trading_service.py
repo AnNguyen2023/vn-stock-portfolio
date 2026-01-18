@@ -67,7 +67,8 @@ def process_buy_order(db: Session, req: schemas.BuyStockRequest, background_task
         price=price_vnd, 
         fee=fee, 
         total_value=total_cost, 
-        note=req.note
+        note=req.note,
+        transaction_date=req.transaction_date
     ))
 
     db.commit()
