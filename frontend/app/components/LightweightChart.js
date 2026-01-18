@@ -1,6 +1,6 @@
 "use client";
 import React, { useEffect, useRef } from 'react';
-import { createChart, ColorType, BaselineSeries, HistogramSeries, LineSeries } from 'lightweight-charts';
+import { createChart, ColorType, BaselineSeries, LineSeries } from 'lightweight-charts';
 
 const LightweightChart = ({
     data,
@@ -27,8 +27,8 @@ const LightweightChart = ({
                 attributionLogo: false,
             },
             grid: {
-                vertLines: { color: 'rgba(148, 163, 184, 0.1)', visible: true },
-                horzLines: { color: 'rgba(148, 163, 184, 0.1)', visible: true },
+                vertLines: { color: 'rgba(148, 163, 184, 0.1)', visible: false },
+                horzLines: { color: 'rgba(148, 163, 184, 0.1)', visible: false },
             },
             width: chartContainerRef.current.clientWidth,
             height: height,
@@ -38,9 +38,14 @@ const LightweightChart = ({
                 secondsVisible: false,
                 timeVisible: true,
                 barSpacing: 2,
+                tickMarkFormatter: (time) => {
+                    const dt = new Date(time * 1000);
+                    const h = String(dt.getHours()).padStart(2, '0');
+                    return `${h}h`;
+                },
             },
             rightPriceScale: {
-                visible: true,
+                visible: false,
                 borderVisible: false,
                 scaleMargins: {
                     top: 0.15,
@@ -51,14 +56,14 @@ const LightweightChart = ({
             handleScale: false,
         });
 
-        // 1. Baseline Series - Green above ref, Red below ref
-        const areaSeries = chart.addSeries(BaselineSeries, {
+        // 1. Baseline Series (green above ref, red below ref)
+        const priceSeries = chart.addSeries(BaselineSeries, {
             baseValue: { type: 'price', price: refPrice },
-            topLineColor: '#10b981',        // Green for prices ABOVE reference
-            topFillColor1: 'rgba(16, 185, 129, 0.15)',
-            topFillColor2: 'rgba(16, 185, 129, 0.0)',
-            bottomLineColor: '#ef4444',     // Red for prices BELOW reference
-            bottomFillColor1: 'rgba(239, 68, 68, 0.15)',
+            topLineColor: '#22c55e',
+            topFillColor1: 'rgba(34, 197, 94, 0.18)',
+            topFillColor2: 'rgba(34, 197, 94, 0.0)',
+            bottomLineColor: '#ef4444',
+            bottomFillColor1: 'rgba(239, 68, 68, 0.18)',
             bottomFillColor2: 'rgba(239, 68, 68, 0.0)',
             lineWidth: 2,
             priceLineVisible: false,
@@ -67,32 +72,15 @@ const LightweightChart = ({
         });
 
         // 2. Reference Price Line (Dashed Yellow)
-        areaSeries.createPriceLine({
+        priceSeries.createPriceLine({
             price: refPrice,
-            color: '#eab308',
-            lineWidth: 2,
+            color: '#94a3b8',
+            lineWidth: 1,
             lineStyle: 2, // Dashed
-            axisLabelVisible: true,
-            title: `${refPrice.toLocaleString('en-US', { minimumFractionDigits: 2, maximumFractionDigits: 2 })}`,
+            axisLabelVisible: false,
         });
 
-        // 3. Volume Histogram
-        const volumeSeries = chart.addSeries(HistogramSeries, {
-            color: '#64748b5c',
-            priceFormat: { type: 'volume' },
-            priceScaleId: '',
-            priceLineVisible: false,
-            lastValueVisible: false,
-        });
-
-        volumeSeries.priceScale().applyOptions({
-            scaleMargins: {
-                top: 0.8,
-                bottom: 0,
-            },
-        });
-
-        // 4. Centering Logic (Visible but transparent to force scale)
+        // 3. Centering Logic (Visible but transparent to force scale)
         const limitSeries = chart.addSeries(LineSeries, {
             color: 'transparent',
             visible: true,
@@ -125,10 +113,8 @@ const LightweightChart = ({
         };
 
         const chartPoints = processData(data, 'p');
-        const volumePoints = processData(data, 'v');
-
         if (chartPoints.length > 0) {
-            areaSeries.setData(chartPoints);
+            priceSeries.setData(chartPoints);
 
             const prices = chartPoints.map(p => p.value);
             const minP = Math.min(...prices);
@@ -156,9 +142,6 @@ const LightweightChart = ({
             });
         }
 
-        if (volumePoints.length > 0) volumeSeries.setData(volumePoints);
-
-        chart.timeScale().fitContent();
         window.addEventListener('resize', handleResize);
 
         return () => {
@@ -168,7 +151,13 @@ const LightweightChart = ({
     }, [data, refPrice, isPositive, height]);
 
     return (
-        <div ref={chartContainerRef} className="w-full relative h-full" />
+        <div ref={chartContainerRef} className="w-full relative h-full bg-gradient-to-b from-slate-50 via-white to-slate-100">
+            {refPrice ? (
+                <div className="absolute left-1/2 top-1/2 -translate-x-1/2 -translate-y-1/2 text-[11px] font-semibold text-slate-500 pointer-events-none">
+                    {refPrice.toLocaleString('en-US', { minimumFractionDigits: 2, maximumFractionDigits: 2 })}
+                </div>
+            ) : null}
+        </div>
     );
 };
 

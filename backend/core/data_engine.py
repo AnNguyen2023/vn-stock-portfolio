@@ -91,7 +91,7 @@ class DataEngine:
             wl_tickers = [w[0] for w in watchlist_tickers]
             
             # 3. Add indices (Core indices)
-            indices = ["VNINDEX", "VN30", "HNX30"]
+            indices = ["VNINDEX", "HNX30"]
             
             all_symbols = list(set(portfolio_tickers + wl_tickers + indices))
             
@@ -169,6 +169,10 @@ class DataEngine:
         Syncs a single ticker using available sources.
         'extra' can contain realtime price/vol/val to supplement or fallback.
         """
+        symbol = (symbol or "").upper().strip()
+        if symbol == "VN30":
+            logger.info("--- [DataEngine] Skipping VN30 sync (display-only index)")
+            return
         logger.info(f"--- [DataEngine] Syncing {symbol} ({start_str} to {end_str})")
         
         # 1. Try to get history from Vnstock (VCI)

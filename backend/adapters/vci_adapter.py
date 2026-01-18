@@ -9,6 +9,17 @@ from crawler import get_historical_prices
 redis_client = get_redis()
 REDIS_AVAILABLE = redis_client is not None
 
+def _vn_now():
+    from datetime import datetime, timedelta
+    return datetime.utcnow() + timedelta(hours=7)
+
+def _is_market_open(now_dt) -> bool:
+    if now_dt.weekday() >= 5:
+        return False
+    market_open = now_dt.replace(hour=9, minute=0, second=0, microsecond=0)
+    market_close = now_dt.replace(hour=15, minute=0, second=0, microsecond=0)
+    return market_open <= now_dt <= market_close
+
 def get_sparkline_data(ticker: str, memory_cache_get_fn, memory_cache_set_fn) -> list[float]:
     """
     """
@@ -68,7 +79,67 @@ def get_sparkline_data(ticker: str, memory_cache_get_fn, memory_cache_set_fn) ->
         print(f"[ADAPTER] VCI Rate Limit hit for {ticker}")
     
     return []
-def get_intraday_sparkline(ticker: str, memory_cache_get_fn, memory_cache_set_fn) -> list[float]:
+def _normalize_intraday_df(df: pd.DataFrame, session_date_str: str) -> pd.DataFrame:
+    df = df.copy()
+
+    # Identify time column
+    time_col = None
+    for col in ["time", "timestamp", "datetime", "date", "t"]:
+        if col in df.columns:
+            time_col = col
+            break
+
+    if time_col is None:
+        return pd.DataFrame()
+
+    df["time"] = df[time_col]
+    time_sample = df["time"].dropna()
+    if time_sample.empty:
+        return pd.DataFrame()
+
+    # Normalize time to datetime
+    sample_val = time_sample.iloc[0]
+    if isinstance(sample_val, (int, float)) and not isinstance(sample_val, bool):
+        # Heuristic: ms vs sec
+        unit = "ms" if sample_val > 1e12 else "s"
+        df["time"] = pd.to_datetime(df["time"], unit=unit, errors="coerce")
+    else:
+        # If time is only HH:MM, attach session date
+        if isinstance(sample_val, str) and len(sample_val) <= 8 and ":" in sample_val:
+            df["time"] = pd.to_datetime(
+                session_date_str + " " + df["time"].astype(str),
+                errors="coerce"
+            )
+        else:
+            df["time"] = pd.to_datetime(df["time"], errors="coerce")
+
+    # Normalize price/volume columns
+    price_col = None
+    for col in ["close", "price", "last", "p", "match_price"]:
+        if col in df.columns:
+            price_col = col
+            break
+    if not price_col:
+        return pd.DataFrame()
+    df["close"] = pd.to_numeric(df[price_col], errors="coerce")
+
+    vol_col = None
+    for col in ["volume", "vol", "v", "match_vol", "accumulated_volume"]:
+        if col in df.columns:
+            vol_col = col
+            break
+    df["volume"] = pd.to_numeric(df[vol_col], errors="coerce") if vol_col else 0
+
+    df = df.dropna(subset=["time", "close"])
+    return df
+
+def get_intraday_sparkline(
+    ticker: str,
+    memory_cache_get_fn,
+    memory_cache_set_fn,
+    fallback_session_date: str | None = None,
+    fallback_close: float | None = None,
+) -> list[float]:
     """
     Fetch intraday sparkline (1m interval) for the most recent session.
     """
@@ -100,7 +171,6 @@ def get_intraday_sparkline(ticker: str, memory_cache_get_fn, memory_cache_set_fn
 
     try:
         from vnstock import Vnstock
-        from datetime import datetime
         from datetime import datetime, timedelta
         
         stock = Vnstock().stock(symbol=ticker, source='VCI')
@@ -108,8 +178,10 @@ def get_intraday_sparkline(ticker: str, memory_cache_get_fn, memory_cache_set_fn
             return []
             
         # 1. Try today's 1m data first
-        today_str = datetime.now().strftime('%Y-%m-%d')
-        session_date_str = today_str
+        vn_now = _vn_now()
+        market_open = _is_market_open(vn_now)
+        today_str = vn_now.strftime('%Y-%m-%d')
+        session_date_str = fallback_session_date if (fallback_session_date and not market_open) else today_str
         print(f"   [{ticker}] Checking today's session: {session_date_str}")
         try:
             df = stock.quote.history(interval='1m', start=session_date_str, end=session_date_str)
@@ -118,20 +190,54 @@ def get_intraday_sparkline(ticker: str, memory_cache_get_fn, memory_cache_set_fn
             df = None
 
         if df is None or df.empty:
-            # 2. Fallback: find the LATEST trading day from daily history
-            today_obj = datetime.now()
+            # 2. Try intraday endpoint (if history 1m is unavailable)
+            try:
+                intraday_df = stock.quote.intraday(page_size=1000)
+            except Exception as ex:
+                intraday_df = None
+
+            if intraday_df is not None and not intraday_df.empty:
+                df = _normalize_intraday_df(intraday_df, session_date_str)
+                if df is not None and not df.empty:
+                    df = df.sort_values("time")
+                    session_date_str = df["time"].iloc[-1].strftime("%Y-%m-%d")
+
+        if market_open and (df is None or df.empty):
+            print(f"   [{ticker}] Market open but intraday is empty. Returning no data.")
+            return []
+
+        if df is None or df.empty:
+            # 3. Fallback: find the LATEST trading day from daily history
+            today_obj = vn_now
             yest_str = (today_obj - timedelta(days=10)).strftime('%Y-%m-%d')
             hist_1d = stock.quote.history(interval='1D', start=yest_str, end=today_str)
             
             if hist_1d is not None and not hist_1d.empty:
+                hist_1d = hist_1d.copy()
+                hist_1d['time'] = pd.to_datetime(hist_1d['time'], errors='coerce')
+                hist_1d = hist_1d.dropna(subset=['time'])
+                hist_1d = hist_1d.sort_values('time')
                 latest_date_item = hist_1d['time'].iloc[-1]
-                if isinstance(latest_date_item, str):
-                    session_date_str = latest_date_item.split(' ')[0]
-                else:
-                    session_date_str = latest_date_item.strftime('%Y-%m-%d')
+                hist_latest_date = latest_date_item.strftime('%Y-%m-%d')
+                session_date_str = fallback_session_date or hist_latest_date
                 
                 print(f"   [{ticker}] Falling back to latest history session: {session_date_str}")
                 df = stock.quote.history(interval='1m', start=session_date_str, end=session_date_str)
+                
+                if (df is None or df.empty) and not market_open:
+                    # If intraday is unavailable, synthesize a flat session using latest close
+                    last_close = fallback_close
+                    if last_close is None and 'close' in hist_1d.columns:
+                        last_close = hist_1d['close'].iloc[-1]
+                    if last_close is not None:
+                        start_session = datetime.combine(latest_date_item.date(), datetime.strptime("09:00", "%H:%M").time())
+                        end_session = datetime.combine(latest_date_item.date(), datetime.strptime("15:00", "%H:%M").time())
+                        full_range = pd.date_range(start=start_session, end=end_session, freq='1min')
+                        df = pd.DataFrame({
+                            "time": full_range,
+                            "close": [float(last_close)] * len(full_range),
+                            "volume": [0] * len(full_range),
+                        })
             else:
                 # If cannot find last session or history failed
                 print(f"   [{ticker}] No fallback session found. Using Daily Sparkline.")

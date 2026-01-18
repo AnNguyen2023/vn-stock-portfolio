@@ -66,10 +66,12 @@ async def general_exception_handler(request: Request, exc: Exception):
 # CORS
 cors_raw = os.getenv("CORS_ORIGINS", "http://localhost:3000,http://127.0.0.1:3000")
 cors_origins = [x.strip() for x in cors_raw.split(",") if x.strip()]
+local_origin_regex = r"^http://(localhost|127\\.0\\.0\\.1)(:\\d+)?$"
 
 app.add_middleware(
     CORSMiddleware,
     allow_origins=cors_origins,
+    allow_origin_regex=local_origin_regex,
     allow_credentials=True,
     allow_methods=["*"],
     allow_headers=["*"],
