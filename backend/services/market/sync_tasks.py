@@ -161,7 +161,8 @@ def sync_historical_task(ticker: str, period: str) -> None:
                             )
                         )
                         existing_dates.add(d)
-                except Exception:
+                except Exception as e:
+                    logger.debug(f"Error parsing historical item for {ticker}: {e}")
                     continue
             db.commit()
         logger.info(f"Finished seeding {ticker}")
