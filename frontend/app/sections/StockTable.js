@@ -224,7 +224,7 @@ export default function StockTable({ data, buyForm, setBuyForm, setSellForm, set
                     <td className="p-4">
                       <div className="flex justify-center gap-2">
                         <button onClick={() => { setBuyForm({ ...buyForm, ticker: s.ticker }); setShowBuy(true) }} className="p-2 bg-emerald-50 text-emerald-600 rounded-lg hover:bg-emerald-600 hover:text-white transition-all shadow-sm"><PlusCircle size={21} /></button>
-                        <button onClick={() => { setSellForm({ ticker: s.ticker, volume: s.volume, price: '', available: s.available }); setShowSell(true) }} className="p-2 bg-rose-50 text-rose-500 rounded-lg hover:bg-rose-500 hover:text-white transition-all shadow-sm"><MinusCircle size={21} /></button>
+                        <button onClick={() => { setSellForm({ ticker: s.ticker, volume: s.volume, price: '', available: s.available, transaction_date: new Date().toISOString().split('T')[0] }); setShowSell(true) }} className="p-2 bg-rose-50 text-rose-500 rounded-lg hover:bg-rose-500 hover:text-white transition-all shadow-sm"><MinusCircle size={21} /></button>
                       </div>
                     </td>
                   </tr>

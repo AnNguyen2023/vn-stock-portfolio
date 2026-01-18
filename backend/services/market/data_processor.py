@@ -116,14 +116,17 @@ def get_trending_indicator(ticker: str, db: Session, background_tasks: Optional[
         .all()
     )
     
+    needs_sync = False
     if len(prices) < 5:
-        # Insufficient data, trigger sync if background_tasks provided
+        # Insufficient data
         if background_tasks:
             logger.info(f"Insufficient history for {ticker} (found {len(prices)}/5), triggering sync.")
             background_tasks.add_task(sync_historical_task, ticker, '1m')
+        else:
+            needs_sync = True
         
         if len(prices) < 2:
-            return {"trend": "sideways", "change_pct": 0.0}
+            return {"trend": "sideways", "change_pct": 0.0, "needs_sync": needs_sync}
     
     prices = list(reversed(prices))
     first_price = float(prices[0].close_price)
@@ -136,7 +139,7 @@ def get_trending_indicator(ticker: str, db: Session, background_tasks: Optional[
     elif change_pct <= -1.0: trend = "down"
     else: trend = "sideways"
     
-    result = {"trend": trend, "change_pct": round(change_pct, 2)}
+    result = {"trend": trend, "change_pct": round(change_pct, 2), "needs_sync": needs_sync}
     
     # 3. Save to Cache (RAM + Redis) with 15m TTL (900s)
     mem_set(cache_key, result, 900)

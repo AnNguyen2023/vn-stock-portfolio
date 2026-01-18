@@ -101,8 +101,8 @@ export default function GrowthChart({
 
       {/* --- HEADER BIỂU ĐỒ: TIÊU ĐỀ, CHU KỲ & SO SÁNH --- */}
       <div className="p-4 bg-slate-100/80 border-b border-slate-300 flex flex-col md:flex-row justify-between md:items-center gap-4">
-        <h2 className="flex items-center gap-2 text-xl font-bold text-slate-700 uppercase tracking-tight">
-          <TrendingUp size={20} className="text-slate-700" />
+        <h2 className="flex items-center gap-2 text-[17px] font-medium text-slate-600 uppercase tracking-tight">
+          <TrendingUp size={20} className="text-slate-600" />
           Tăng trưởng (%)
         </h2>
 
