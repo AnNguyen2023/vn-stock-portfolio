@@ -8,7 +8,7 @@ from sqlalchemy.orm import Session
 
 import models
 from core.db import SessionLocal
-from core.redis_client import base_cache_get as cache_get, base_cache_set as cache_set  # Using aliases if needed, but lets use cache module
+from services.market.cache import mem_get, mem_set
 from services.market.cache import mem_get, mem_set
 from core.logger import logger
 from adapters import vci_adapter, vnstock_adapter
