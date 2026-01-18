@@ -71,7 +71,9 @@ const normalizeData = (responses, stockTickers, chartTickers, portfolioSeries = 
     }
   });
 
-  // Merge ra chartData
+  // Merge chartData with Forward-Fill logic
+  const lastPrices = {}; // Track last valid price for each ticker
+
   return baseData.map((item) => {
     const dateStr = item.date;
     const point = { date: dateStr };
@@ -82,13 +84,22 @@ const normalizeData = (responses, stockTickers, chartTickers, portfolioSeries = 
         return;
       }
 
-      const currentPrice = priceMaps[ticker]?.[dateStr];
+      let currentPrice = priceMaps[ticker]?.[dateStr];
+
+      // Implement Forward-Fill: If no price today, use last known price
+      if (currentPrice != null) {
+        lastPrices[ticker] = currentPrice;
+      } else {
+        currentPrice = lastPrices[ticker];
+      }
+
       const startPrice = firstPrices[ticker];
 
       if (currentPrice != null && startPrice != null && startPrice !== 0) {
         const growth = ((currentPrice - startPrice) / startPrice) * 100;
         point[ticker] = parseFloat(growth.toFixed(2));
       } else {
+        // Only 0 if we truly have no data yet (start of chart)
         point[ticker] = 0;
       }
     });

@@ -14,7 +14,7 @@ router = APIRouter(tags=["Market Data"])
 @router.post("/seed-index")
 def seed_index_data(background_tasks: BackgroundTasks):
     """
-    Trigger background job to sync VNINDEX, VN30, HNX30 historical data.
+    Trigger background job to sync VNINDEX and HNX30 historical data.
     """
     background_tasks.add_task(market_service.seed_index_data_task)
     return {"success": True, "message": "Fetching VN-INDEX historical data in background."}
@@ -91,6 +91,17 @@ def get_market_summary(db: Session = Depends(get_db)):
         "data": data
     }
 
+@router.get("/index-widget")
+def get_index_widget(ticker: str = "VNINDEX", db: Session = Depends(get_db)):
+    """
+    Get generic index widget data (Chart + Session Info).
+    """
+    data = market_service.get_index_widget_data(db, ticker)
+    return {
+        "success": True, 
+        "data": data
+    }
+
 @router.get("/migrate-value")
 def migrate_value_column(db: Session = Depends(get_db)):
     """
@@ -154,11 +165,11 @@ def get_vps_live_board(symbols: str = "FPT,HAG,VCI,MBB,STB,FUEVFVND,MBS,BAF,DXG,
         "data": raw_data
     }
 @router.get("/intraday/{ticker}")
-def get_intraday(ticker: str):
+def get_intraday(ticker: str, db: Session = Depends(get_db)):
     """
     Get intraday time-series data for a specific ticker.
     """
-    data = market_service.get_intraday_data_service(ticker)
+    data = market_service.get_intraday_data_service(ticker, db)
     return {
         "success": True,
         "ticker": ticker.upper(),
