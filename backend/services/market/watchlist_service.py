@@ -35,8 +35,9 @@ def get_watchlist_detail_service(tickers: list[str], watchlist_id: int | None = 
                     res_obj = json.loads(raw_redis)
                     mem_set(result_cache_key, res_obj, 10) # Backfill memory 10s
                     return res_obj
-            except:
-                pass
+            except Exception as e:
+                from core.logger import logger
+                logger.debug(f"Redis cache fetch error: {e}")
 
     # 1. Batch Metadata Fetch (LONG-TERM CACHE 1H)
     sec_metadata = {}
@@ -65,8 +66,9 @@ def get_watchlist_detail_service(tickers: list[str], watchlist_id: int | None = 
                 if REDIS_AVAILABLE:
                     try:
                         redis_client.setex(f"sec_meta_v1:{sec.symbol}", 28800, json.dumps(meta_obj))
-                    except:
-                        pass
+                    except Exception as e:
+                        from core.logger import logger
+                        logger.debug(f"Redis setex error: {e}")
 
     # 2. Lấy giá Real-time (Batch Request)
     try:
@@ -116,7 +118,8 @@ def get_watchlist_detail_service(tickers: list[str], watchlist_id: int | None = 
         if REDIS_AVAILABLE:
             try:
                 redis_client.setex(result_cache_key, 10, json.dumps(ordered_results))
-            except:
-                pass
+            except Exception as e:
+                from core.logger import logger
+                logger.debug(f"Redis setex error: {e}")
                 
     return ordered_results
