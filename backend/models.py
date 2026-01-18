@@ -106,6 +106,18 @@ class HistoricalPrice(Base):
     __table_args__ = (UniqueConstraint("ticker", "date", name="_ticker_date_uc"),)
 
 
+class IntradayPrice(Base):
+    """Intraday minute data used for charting when market is closed."""
+    __tablename__ = "intraday_prices"
+    id = Column(Integer, primary_key=True, index=True)
+    ticker = Column(String(10), index=True)
+    timestamp = Column(DateTime, index=True)
+    price = Column(Numeric(20, 4))
+    volume = Column(Numeric(20, 4), default=0)
+
+    __table_args__ = (UniqueConstraint("ticker", "timestamp", name="_ticker_ts_uc"),)
+
+
 class Security(Base):
     """Danh mục các mã chứng khoán hợp lệ trên thị trường Việt Nam"""
     __tablename__ = "securities"

@@ -155,3 +155,7 @@ temp/
 .agent/*
 !.agent/skills/
 !.agent/skills/**
+
+# Security
+.codex/
+.codex/auth.json
