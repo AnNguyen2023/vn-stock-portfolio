@@ -1,5 +1,5 @@
 # routers/watchlist.py
-from fastapi import APIRouter, Depends
+from fastapi import APIRouter, Depends, BackgroundTasks
 from sqlalchemy.orm import Session, joinedload
 from typing import List
 
@@ -131,7 +131,7 @@ def remove_ticker_from_watchlist(id: int, ticker_id: int, db: Session = Depends(
     return {"success": True, "message": f"Removed {ticker} from watchlist."}
 
 @router.get("/{id}/detail")
-def get_watchlist_detail(id: int, db: Session = Depends(get_db)):
+def get_watchlist_detail(id: int, background_tasks: BackgroundTasks, db: Session = Depends(get_db)):
     """
     Retrieves detailed real-time market data for all symbols in the watchlist.
     Includes the specific WatchlistTicker ID for management purposes.
@@ -145,7 +145,7 @@ def get_watchlist_detail(id: int, db: Session = Depends(get_db)):
     tickers = list(ticker_to_id.keys())
     
     # Pass ID for results caching (10s)
-    market_data = get_watchlist_detail_service(tickers, watchlist_id=id)
+    market_data = get_watchlist_detail_service(tickers, background_tasks=background_tasks, watchlist_id=id)
     
     # Inject the mapping ID into the market data objects
     for item in market_data:

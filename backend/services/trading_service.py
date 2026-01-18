@@ -67,7 +67,8 @@ def process_buy_order(db: Session, req: schemas.BuyStockRequest, background_task
         price=price_vnd, 
         fee=fee, 
         total_value=total_cost, 
-        note=req.note
+        note=req.note,
+        transaction_date=req.transaction_date
     ))
 
     db.commit()
@@ -131,14 +132,16 @@ def process_sell_order(db: Session, req: schemas.SellStockRequest) -> Dict[str, 
         fee=fee, 
         tax=tax, 
         total_value=net_proceeds, 
-        note=req.note
+        note=req.note,
+        transaction_date=req.transaction_date
     ))
     db.add(models.RealizedProfit(
         ticker=ticker, 
         volume=volume_to_sell, 
         buy_avg_price=holding.average_price if holding.total_volume > 0 else (cost_basis/volume_to_sell), 
         sell_price=price_vnd, 
-        net_profit=profit
+        net_profit=profit,
+        sell_date=req.transaction_date
     ))
 
     db.commit()

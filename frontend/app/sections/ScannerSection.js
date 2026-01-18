@@ -158,9 +158,9 @@ export default function ScannerSection() {
         <div className="bg-white rounded-3xl border border-slate-200 shadow-sm overflow-hidden p-6 animate-in fade-in slide-in-from-bottom-4 duration-500">
             <div className="flex flex-col md:flex-row md:items-center justify-between gap-4 mb-8">
                 <div>
-                    <h2 className="text-xl font-bold text-slate-900 flex items-center gap-2">
-                        <Activity className="text-emerald-500" size={24} />
-                        TITAN Adaptive Scanner
+                    <h2 className="text-[17px] font-medium text-slate-600 uppercase tracking-tight flex items-center gap-2">
+                        <Activity className="text-emerald-500" size={20} />
+                        TITAN Scanner
                     </h2>
                     <p className="text-sm text-slate-500">Quét 120 mã VN100 & Tối ưu hóa tham số DI (1-40)</p>
                 </div>

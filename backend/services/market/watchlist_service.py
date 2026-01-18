@@ -9,7 +9,9 @@ import models
 from core.db import SessionLocal
 from crawler import get_current_prices
 
-def get_watchlist_detail_service(tickers: list[str], watchlist_id: int | None = None) -> list[dict]:
+from fastapi import BackgroundTasks
+
+def get_watchlist_detail_service(tickers: list[str], background_tasks: Optional[BackgroundTasks] = None, watchlist_id: int | None = None) -> list[dict]:
     """
     Lấy dữ liệu chi tiết Watchlist (Tối ưu Parallel + Memory Cache + Batch Metadata + Result Cache)
     """
@@ -104,5 +106,21 @@ def get_watchlist_detail_service(tickers: list[str], watchlist_id: int | None = 
                 redis_client.setex(result_cache_key, 10, json.dumps(ordered_results))
             except:
                 pass
-                
+    
+    # Check if any ticker needs historical sync
+    if background_tasks:
+        from services.market.sync_tasks import sync_historical_task
+        from core.logger import logger
+        
+        tickers_to_sync = []
+        for r in ordered_results:
+            trending = r.get("trending")
+            if trending and isinstance(trending, dict) and trending.get("needs_sync"):
+                tickers_to_sync.append(r["ticker"])
+        
+        if tickers_to_sync:
+            logger.info(f"Triggering background sync for {len(tickers_to_sync)} tickers in watchlist.")
+            for t in set(tickers_to_sync): # Deduplicate
+                background_tasks.add_task(sync_historical_task, t, '1m')
+
     return ordered_results
