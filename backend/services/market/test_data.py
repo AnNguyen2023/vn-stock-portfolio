@@ -27,25 +27,33 @@ def seed_test_data_task(ticker: str, days: int = 7) -> dict:
             logger.warning(f"No historical data found for {ticker} to seed test table.")
             return {"success": False, "message": f"No data found for {ticker}"}
 
+        # Pre-fetch existing test records to avoid N+1 SELECTs
+        existing_records = {
+            r.date: r for r in 
+            db.query(models.TestHistoricalPrice)
+            .filter(models.TestHistoricalPrice.ticker == ticker)
+            .all()
+        }
+
         count = 0
         for item in real_data:
             try:
-                # Upsert into TestHistoricalPrice
-                exist = db.query(models.TestHistoricalPrice).filter_by(ticker=ticker, date=item.date).first()
-                if exist:
+                # Upsert into TestHistoricalPrice (Memory Check)
+                if item.date in existing_records:
+                    exist = existing_records[item.date]
                     exist.close_price = item.close_price
                     exist.volume = item.volume
                     exist.value = item.value
                 else:
-                    db.add(
-                        models.TestHistoricalPrice(
-                            ticker=ticker,
-                            date=item.date,
-                            close_price=item.close_price,
-                            volume=item.volume,
-                            value=item.value
-                        )
+                    new_rec = models.TestHistoricalPrice(
+                        ticker=ticker,
+                        date=item.date,
+                        close_price=item.close_price,
+                        volume=item.volume,
+                        value=item.value
                     )
+                    db.add(new_rec)
+                    existing_records[item.date] = new_rec # Update local cache
                 count += 1
             except Exception as e:
                 logger.error(f"Error seeding test item for {ticker}: {e}")
