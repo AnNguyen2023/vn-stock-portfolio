@@ -14,7 +14,9 @@ from services.market.sync_tasks import (
     sync_securities_task
 )
 from services.market.watchlist_service import (
-    get_watchlist_detail_service,
+    get_watchlist_detail_service
+)
+from services.market.cache import (
     invalidate_watchlist_detail_cache
 )
 from services.market.market_summary import (
