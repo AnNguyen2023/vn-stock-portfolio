@@ -29,12 +29,19 @@ def seed_index_data_task() -> None:
                 logger.warning(f"No historical data found for index {symbol}")
                 continue
 
+            # Pre-fetch existing dates to avoid N+1 SELECTs
+            existing_dates = {
+                r.date for r in 
+                db.query(models.HistoricalPrice.date)
+                .filter(models.HistoricalPrice.ticker == symbol)
+                .all()
+            }
+
             count = 0
             for item in live_data:
                 try:
                     d = datetime.strptime(item["date"], "%Y-%m-%d").date()
-                    exist = db.query(models.HistoricalPrice).filter_by(ticker=symbol, date=d).first()
-                    if not exist:
+                    if d not in existing_dates:
                         db.add(
                             models.HistoricalPrice(
                                 ticker=symbol,
@@ -44,6 +51,7 @@ def seed_index_data_task() -> None:
                                 value=Decimal(str(item.get("value", 0))),
                             )
                         )
+                        existing_dates.add(d) # Local update to prevent dups in same batch
                         count += 1
                 except Exception as e:
                     logger.debug(f"Error parsing historical item for {symbol}: {e}")
@@ -75,11 +83,18 @@ def sync_portfolio_history_task(tickers: Iterable[str], sleep_sec: float = 2.0) 
         live_data = crawler.get_historical_prices(t, period="1y")
         if live_data:
             with SessionLocal() as db:
+                # Pre-fetch existing dates to avoid N+1 SELECTs
+                existing_dates = {
+                    r.date for r in 
+                    db.query(models.HistoricalPrice.date)
+                    .filter(models.HistoricalPrice.ticker == t)
+                    .all()
+                }
+
                 for item in live_data:
                     try:
                         d = datetime.strptime(item["date"], "%Y-%m-%d").date()
-                        exist = db.query(models.HistoricalPrice).filter_by(ticker=t, date=d).first()
-                        if not exist:
+                        if d not in existing_dates:
                             db.add(
                                 models.HistoricalPrice(
                                     ticker=t,
@@ -89,6 +104,7 @@ def sync_portfolio_history_task(tickers: Iterable[str], sleep_sec: float = 2.0) 
                                     value=Decimal(str(item.get("value", 0))),
                                 )
                             )
+                            existing_dates.add(d) # Local update to prevent dups in same batch
                     except Exception as e:
                         logger.debug(f"Error parsing history for {t}: {e}")
                         continue
@@ -123,11 +139,18 @@ def sync_historical_task(ticker: str, period: str) -> None:
             return
 
         with SessionLocal() as db:
+            # Pre-fetch existing dates
+            existing_dates = {
+                r.date for r in 
+                db.query(models.HistoricalPrice.date)
+                .filter(models.HistoricalPrice.ticker == ticker)
+                .all()
+            }
+
             for item in live_data:
                 try:
                     d = datetime.strptime(item["date"], "%Y-%m-%d").date()
-                    exist = db.query(models.HistoricalPrice).filter_by(ticker=ticker, date=d).first()
-                    if not exist:
+                    if d not in existing_dates:
                         db.add(
                             models.HistoricalPrice(
                                 ticker=ticker,
@@ -137,6 +160,7 @@ def sync_historical_task(ticker: str, period: str) -> None:
                                 value=Decimal(str(item.get("value", 0))),
                             )
                         )
+                        existing_dates.add(d)
                 except Exception:
                     continue
             db.commit()

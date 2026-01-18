@@ -9,7 +9,7 @@ from sqlalchemy.orm import Session
 import models
 from core.db import SessionLocal
 from services.market.cache import mem_get, mem_set
-from services.market.cache import mem_get, mem_set
+
 from core.logger import logger
 from adapters import vci_adapter, vnstock_adapter
 from services.market.sync_tasks import sync_historical_task
@@ -142,7 +142,68 @@ def get_trending_indicator(ticker: str, db: Session, background_tasks: Optional[
     mem_set(cache_key, result, 900)
     return result
 
-def _process_single_ticker(t: str, p_info: dict, sec_info: dict | None = None) -> dict:
+def get_trending_indicators_batch(tickers: list[str], db: Session, background_tasks: Optional[BackgroundTasks] = None) -> dict[str, dict]:
+    """
+    Batch optimization for getting trending indicators.
+    Returns a dict: {ticker: result}
+    """
+    results = {}
+    missing_tickers = []
+    
+    # 1. Check Cache First
+    for ticker in tickers:
+        cached = mem_get(f"trending:{ticker}")
+        if cached:
+            results[ticker] = cached
+        else:
+            missing_tickers.append(ticker)
+            
+    if not missing_tickers:
+        return results
+        
+    # 2. Fetch from DB for missing tickers (Sequential in single session is faster than N sessions)
+    # We fetch last 30 days of data for these tickers to avoid N queries if possible, 
+    # but for accuracy of "last 5 sessions", sequential limit queries is simplest and safe enough 
+    # since session overhead is removed.
+    
+    for ticker in missing_tickers:
+        prices = (
+            db.query(models.HistoricalPrice)
+            .filter(models.HistoricalPrice.ticker == ticker)
+            .order_by(models.HistoricalPrice.date.desc())
+            .limit(5)
+            .all()
+        )
+        
+        if len(prices) < 5:
+            if background_tasks:
+                background_tasks.add_task(sync_historical_task, ticker, '1m')
+            
+            if len(prices) < 2:
+                results[ticker] = {"trend": "sideways", "change_pct": 0.0}
+                # Don't cache bad data for long, or maybe cache short? 
+                # Current logic doesn't cache if < 5 except here. 
+                # We'll stick to not caching or returning default without cache.
+                continue
+
+        prices = list(reversed(prices))
+        first_price = float(prices[0].close_price)
+        last_price = float(prices[-1].close_price)
+        change_pct = ((last_price - first_price) / first_price) * 100 if first_price > 0 else 0.0
+        
+        if change_pct >= 3.0: trend = "strong_up"
+        elif change_pct >= 1.0: trend = "up"
+        elif change_pct <= -3.0: trend = "strong_down"
+        elif change_pct <= -1.0: trend = "down"
+        else: trend = "sideways"
+        
+        res_obj = {"trend": trend, "change_pct": round(change_pct, 2)}
+        results[ticker] = res_obj
+        mem_set(f"trending:{ticker}", res_obj, 900)
+        
+    return results
+
+def _process_single_ticker(t: str, p_info: dict, sec_info: dict | None = None, trending_info: dict | None = None) -> dict:
     """Hàm xử lý logic cho 1 mã (chạy trong thread)"""
     t = t.upper()
     try:
@@ -175,9 +236,12 @@ def _process_single_ticker(t: str, p_info: dict, sec_info: dict | None = None) -
         ratios = vnstock_adapter.get_financial_ratios(t, mem_get, mem_set)
 
         # 5. TRENDING INDICATOR (Batch Optimization)
-        # Use the existing function but without background_tasks to keep this service light
-        with SessionLocal() as db:
-            trending = get_trending_indicator(t, db)
+        # Use passed trending_info if available (Optimized), else fallback to creating session (N+1 Risk)
+        if trending_info:
+            trending = trending_info
+        else:
+            with SessionLocal() as db:
+                trending = get_trending_indicator(t, db)
 
         return {
             "ticker": t,

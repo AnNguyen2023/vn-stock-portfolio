@@ -74,16 +74,28 @@ def get_watchlist_detail_service(tickers: list[str], watchlist_id: int | None = 
     except:
         current_prices = {}
 
+    # 3. Batch Trending Data (One DB Session for all)
+    trending_data_map = {}
+    try:
+        from services.market.data_processor import get_trending_indicators_batch
+        # Use existing SessionLocal context if possible, or create new short-lived one
+        # To avoid blocking, we use a dedicated session for this batch read
+        with SessionLocal() as db:
+            trending_data_map = get_trending_indicators_batch(tickers_upper, db)
+    except Exception as e:
+        print(f"[ERR] Batch Trending Fetch Failed: {e}")
+
     results = []
     
-    # 3. Chạy Parallel xử lý từng mã
+    # 4. Chạy Parallel xử lý từng mã
     with concurrent.futures.ThreadPoolExecutor(max_workers=20) as executor:
         future_to_ticker = {
             executor.submit(
                 _process_single_ticker, 
                 t, 
                 current_prices.get(t, {}), 
-                sec_metadata.get(t)
+                sec_metadata.get(t),
+                trending_data_map.get(t) # Pass pre-fetched trending data
             ): t 
             for t in tickers_upper
         }

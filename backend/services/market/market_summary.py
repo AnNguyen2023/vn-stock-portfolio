@@ -167,32 +167,95 @@ def _process_market_row(row: Any, index_name: str, db: Session, vps_data: dict =
         return None
 
 def _get_market_fallback(db: Session, indices: list[str]) -> list[dict]:
-    """Helper for database fallback synchronization."""
+    """
+    Helper for database fallback synchronization.
+    Optimized to use batch queries instead of N+1 loop.
+    """
+    if not indices:
+        return []
+
+    from sqlalchemy import func, tuple_, desc, literal_column
+    
     fallback_results = []
     
+    # 1. Helper to fetch latest records for multiple tickers from a specific table
+    def fetch_latest_from_table(model, tickers):
+        if not tickers: return []
+        subq = (
+            db.query(
+                model.ticker,
+                func.max(model.date).label('max_date')
+            )
+            .filter(model.ticker.in_(tickers))
+            .group_by(model.ticker)
+            .subquery()
+        )
+        
+        return (
+            db.query(model)
+            .join(subq, (model.ticker == subq.c.ticker) & (model.date == subq.c.max_date))
+            .all()
+        )
+
+    # 2. Try TestHistoricalPrice first (Priority 1)
+    latest_test = fetch_latest_from_table(models.TestHistoricalPrice, indices)
+    latest_map = {r.ticker: r for r in latest_test}
+    
+    # 3. Try HistoricalPrice for missing ones (Priority 2)
+    missing_indices = [i for i in indices if i not in latest_map]
+    if missing_indices:
+        latest_real = fetch_latest_from_table(models.HistoricalPrice, missing_indices)
+        for r in latest_real:
+            latest_map[r.ticker] = r
+
+    # 4. Fetch Previous Records for Change Calculation (Batch)
+    # We need to find the record immediately preceding the latest date for each ticker
+    prev_map = {}
+    
+    # Collect queries for each valid ticker to find its previous record
+    # Since specific dates vary per ticker, a single simple batch query is hard without window functions
+    # or complex self-joins. Given standard simple SQL usage, we can iterate for PREVIOUS record 
+    # (checking 2-3 indices is fast enough if LATEST is already batched, or use UNION ALL)
+    
+    valid_tickers = [t for t in indices if t in latest_map]
+    if valid_tickers:
+        # Optimization: Use UNION ALL to fetch previous records in one go
+        queries = []
+        for t in valid_tickers:
+            latest_date = latest_map[t].date
+            is_test = isinstance(latest_map[t], models.TestHistoricalPrice)
+            table = models.TestHistoricalPrice if is_test else models.HistoricalPrice
+            
+            q = (
+                db.query(table.ticker, table.close_price)
+                .filter(table.ticker == t, table.date < latest_date)
+                .order_by(table.date.desc())
+                .limit(1)
+            )
+            queries.append(q)
+            
+        if queries:
+            from sqlalchemy import union_all
+            # This returns (ticker, close_price) tuples
+            try:
+                prev_results = db.execute(union_all(*queries)).all()
+                for row in prev_results:
+                    # row is like ('VNINDEX', Decimal('1234.56'))
+                    prev_map[row[0]] = float(row[1])
+            except Exception as e:
+                logger.debug(f"Batch prev fetch failed: {e}")
+
+    # 5. Build Results
     for index_name in indices:
-        latest = db.query(models.TestHistoricalPrice).filter(
-            models.TestHistoricalPrice.ticker == index_name
-        ).order_by(models.TestHistoricalPrice.date.desc()).first()
-        
-        if not latest:
-            # Try real historical if test is empty
-            latest = db.query(models.HistoricalPrice).filter(
-                models.HistoricalPrice.ticker == index_name
-            ).order_by(models.HistoricalPrice.date.desc()).first()
-        
+        latest = latest_map.get(index_name)
         if not latest:
             continue
-
-        # Get previous record for change calculation (from the same table)
-        table = models.TestHistoricalPrice if isinstance(latest, models.TestHistoricalPrice) else models.HistoricalPrice
-        prev = db.query(table).filter(
-            table.ticker == index_name, 
-            table.date < latest.date
-        ).order_by(table.date.desc()).first()
-        
+            
         price = float(latest.close_price)
-        ref = float(prev.close_price) if prev else price
+        prev_price = prev_map.get(index_name, price) # Default to current price if no prev (change=0)
+        
+        # Determine actual Ref price (Close of prev session)
+        ref = prev_price 
         
         if price > 5000:
             price /= 1000
@@ -201,6 +264,7 @@ def _get_market_fallback(db: Session, indices: list[str]) -> list[dict]:
         change = price - ref
         change_pct = (change / ref * 100) if ref > 0 else 0
         
+        # Sparkline logic (unchanged)
         vn_now = _vn_now()
         market_open = _is_market_open(vn_now)
         sparkline = []
@@ -220,17 +284,22 @@ def _get_market_fallback(db: Session, indices: list[str]) -> list[dict]:
                 fallback_close=fallback_close,
             )
         
+        val_raw = float(latest.value or 0)
+        # Auto-detect scale for value: if > 1M => likely VND, convert to Billions
+        value_billions = val_raw / (1e9 if val_raw > 1e6 else 1)
+
         fallback_results.append({
             "index": index_name,
             "price": round(price, 2),
             "change": round(change, 2),
             "change_pct": round(change_pct, 2),
             "volume": int(latest.volume or 0),
-            "value": float(latest.value or 0) / (1e9 if (latest.value or 0) > 1e6 else 1),
+            "value": value_billions,
             "last_updated": latest.date.strftime("%Y-%m-%d"),
             "sparkline": sparkline,
             "source": "database"
         })
+        
     return fallback_results
 
 def get_market_summary_service(db: Session) -> list[dict]:
