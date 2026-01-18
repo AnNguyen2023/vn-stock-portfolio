@@ -396,16 +396,27 @@ def get_intraday_data_service(ticker: str, db: Session | None = None) -> list[di
 # PLACEHOLDER for get_index_widget_data to ensure functionality
 # Re-using logic consistent with get_market_summary_service but for single ticker
 def get_index_widget_data(db: Session, ticker: str = "VNINDEX") -> dict:
-    """Same logic as market summary but focused on widget data for a single ticker."""
+    """
+    Returns data in the nested format expected by VnindexWidget.js.
+    Format: { series_points: [], session_info: {}, ref_level: float }
+    """
     res = get_market_summary_service(db)
     for r in res:
         if r['index'] == ticker:
-            # Widget expects a certain structure, usually identical to summary row
-            # plus session info maybe?
-            # From previous context, it returns { "series": ..., "info": ... } maybe?
-            # But the market row has "sparkline" and "price", "change", etc.
-            # Let's verify what the frontend expects.
-            # Frontend uses: data.sparkline, data.price, data.change, data.reference_price?
-            # actually VnindexWidget uses { p, t } for chart, and sessionInfo { price, change, etc }
-            return r
+            price = r.get('price', 0)
+            change = r.get('change', 0)
+            ref_level = price - change
+            
+            return {
+                "series_points": r.get("sparkline", []),
+                "session_info": {
+                    "index_name": r.get("index"),
+                    "last_value": price,
+                    "change_abs": change,
+                    "change_pct": r.get("change_pct", 0),
+                    "total_volume": r.get("volume", 0),
+                    "total_value": r.get("value", 0) * 1_000_000_000  # Convert Billions to raw VND
+                },
+                "ref_level": ref_level
+            }
     return {}

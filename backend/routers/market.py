@@ -91,10 +91,7 @@ def get_index_widget(ticker: str = "VNINDEX", db: Session = Depends(get_db)):
     Get generic index widget data (Chart + Session Info).
     """
     data = market_service.get_index_widget_data(db, ticker)
-    return {
-        "success": True, 
-        "data": data
-    }
+    return success(data=data)
 
 
 @router.get("/migrate-value")
